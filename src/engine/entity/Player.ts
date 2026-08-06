@@ -415,9 +415,17 @@ export default class Player extends PathingEntity {
 
     constructor(username: string, username37: bigint, hash64: bigint) {
         super(
-            0, 3094, 3106, // tutorial island
-            1, 1,
-            EntityLifeCycle.FOREVER, MoveRestrict.NORMAL, BlockWalk.NPC, MoveStrategy.SMART, PlayerInfoProt.FACE_COORD, PlayerInfoProt.FACE_ENTITY
+            0,
+            3094,
+            3106, // tutorial island
+            1,
+            1,
+            EntityLifeCycle.FOREVER,
+            MoveRestrict.NORMAL,
+            BlockWalk.NPC,
+            MoveStrategy.SMART,
+            PlayerInfoProt.FACE_COORD,
+            PlayerInfoProt.FACE_ENTITY
         );
 
         this.username = username;
@@ -976,6 +984,45 @@ export default class Player extends PathingEntity {
         return true;
     }
 
+    /**
+     * Multi-npc / multi-loc: scripts are bound to the *resolved* form
+     * (e.g. [opnpc1,tbwt_tiadeche]), while map spawn type is the multi base
+     * (tbwt_tiadeche_multinpc_shore). OpNpcHandler already resolves for op
+     * validation; trigger lookup must match or we get "No trigger for
+     * [opnpc1,tbwt_tiadeche_multinpc_shore]".
+     */
+    private resolveNpcTypeForTrigger(base: NpcType): NpcType {
+        if (base.multivarp !== -1) {
+            const state = this.getVar(base.multivarp) as number;
+            if (state >= 0 && state < base.multinpc.length && base.multinpc[state] !== -1) {
+                return NpcType.get(base.multinpc[state]);
+            }
+        } else if (base.multivarbit !== -1) {
+            const state = this.getVarBit(base.multivarbit);
+            if (state >= 0 && state < base.multinpc.length && base.multinpc[state] !== -1) {
+                return NpcType.get(base.multinpc[state]);
+            }
+        }
+        return base;
+    }
+
+    private resolveLocTypeForTrigger(base: LocType): LocType {
+        // Loc multi uses multivarp/multivarbit + multiloc (same shape as npc).
+        if (!base.multiloc || base.multiloc.length === 0) return base;
+        if (base.multivarp !== -1) {
+            const state = this.getVar(base.multivarp) as number;
+            if (state >= 0 && state < base.multiloc.length && base.multiloc[state] !== -1) {
+                return LocType.get(base.multiloc[state]);
+            }
+        } else if (base.multivarbit !== -1) {
+            const state = this.getVarBit(base.multivarbit);
+            if (state >= 0 && state < base.multiloc.length && base.multiloc[state] !== -1) {
+                return LocType.get(base.multiloc[state]);
+            }
+        }
+        return base;
+    }
+
     getOpTrigger() {
         if (!this.target) {
             return null;
@@ -989,9 +1036,9 @@ export default class Player extends PathingEntity {
             let type: NpcType | LocType | ObjType | null = null;
 
             if (this.target instanceof Npc) {
-                type = NpcType.get(this.target.type);
+                type = this.resolveNpcTypeForTrigger(NpcType.get(this.target.type));
             } else if (this.target instanceof Loc) {
-                type = LocType.get(this.target.type);
+                type = this.resolveLocTypeForTrigger(LocType.get(this.target.type));
             } else if (this.target instanceof Obj) {
                 type = ObjType.get(this.target.type);
             }
@@ -1023,9 +1070,9 @@ export default class Player extends PathingEntity {
             let type: NpcType | LocType | ObjType | null = null;
 
             if (this.target instanceof Npc) {
-                type = NpcType.get(this.target.type);
+                type = this.resolveNpcTypeForTrigger(NpcType.get(this.target.type));
             } else if (this.target instanceof Loc) {
-                type = LocType.get(this.target.type);
+                type = this.resolveLocTypeForTrigger(LocType.get(this.target.type));
             } else if (this.target instanceof Obj) {
                 type = ObjType.get(this.target.type);
             }
@@ -1089,10 +1136,10 @@ export default class Player extends PathingEntity {
         if (!Environment.NODE_PRODUCTION && !opTrigger && !apTrigger) {
             let debugname = '_';
             if (this.target instanceof Npc) {
-                const type = NpcType.get(this.target.type);
+                const type = this.resolveNpcTypeForTrigger(NpcType.get(this.target.type));
                 debugname = type.debugname ?? this.target.type.toString();
             } else if (this.target instanceof Loc) {
-                const type = LocType.get(this.target.type);
+                const type = this.resolveLocTypeForTrigger(LocType.get(this.target.type));
                 debugname = type.debugname ?? this.target.type.toString();
             } else if (this.target instanceof Obj) {
                 debugname = ObjType.get(this.target.type)?.debugname ?? this.target.type.toString();
@@ -1324,8 +1371,8 @@ export default class Player extends PathingEntity {
         const stream = Packet.alloc(0);
 
         stream.p1(this.gender);
-        stream.p1(0xFF); // prayer icon?
-        stream.p1(0xFF); // skull icon?
+        stream.p1(0xff); // prayer icon?
+        stream.p1(0xff); // skull icon?
 
         const skippedSlots = [];
 
@@ -1356,7 +1403,7 @@ export default class Player extends PathingEntity {
         }
 
         for (let slot = 0; slot < 12; slot++) {
-            if(this.npcId != -1) {
+            if (this.npcId != -1) {
                 stream.p2(-1);
                 stream.p2(this.npcId);
                 break;
@@ -1759,7 +1806,7 @@ export default class Player extends PathingEntity {
         const { basevar, startbit, endbit } = varbit;
         const mask = Packet.bitmask[endbit - startbit + 1];
 
-        return this.vars[basevar] >> startbit & mask;
+        return (this.vars[basevar] >> startbit) & mask;
     }
 
     setVarBit(id: number, value: number) {
@@ -1776,7 +1823,7 @@ export default class Player extends PathingEntity {
         }
 
         mask <<= startbit;
-        this.setVar(basevar, mask & value << startbit | this.vars[basevar] & ~mask);
+        this.setVar(basevar, (mask & (value << startbit)) | (this.vars[basevar] & ~mask));
     }
 
     private writeVarp(id: number, value: number): void {
@@ -2245,19 +2292,11 @@ export default class Player extends PathingEntity {
         const daysSinceLogin: number = (Number(lastDate) / (1000 * 60 * 60 * 24)) | 0;
         const daysSincePasswordChanged = 201; // hide :)
         const daysSinceRecoveriesChanged = 201; // hide :)
-        const currentDay: number = Number(nextDate) / (1000 * 60 * 60 * 24) | 0;
+        const currentDay: number = (Number(nextDate) / (1000 * 60 * 60 * 24)) | 0;
         const unreadMessageCount = 0;
         const membersCreditDays = 365;
 
-        this.write(new LastLoginInfo(
-            lastIp,
-            currentDay,
-            daysSinceLogin,
-            daysSincePasswordChanged,
-            daysSinceRecoveriesChanged,
-            unreadMessageCount,
-            membersCreditDays
-        ));
+        this.write(new LastLoginInfo(lastIp, currentDay, daysSinceLogin, daysSincePasswordChanged, daysSinceRecoveriesChanged, unreadMessageCount, membersCreditDays));
         this.lastLoginTime = nextDate;
     }
 

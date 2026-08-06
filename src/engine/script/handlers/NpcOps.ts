@@ -9,6 +9,7 @@ import { HuntVis } from '#/engine/entity/hunt/HuntVis.js';
 import { Interaction } from '#/engine/entity/Interaction.js';
 import Loc from '#/engine/entity/Loc.js';
 import Npc from '#/engine/entity/Npc.js';
+import type Player from '#/engine/entity/Player.js';
 import { NpcIteratorType } from '#/engine/entity/NpcIteratorType.js';
 import { NpcMode } from '#/engine/entity/NpcMode.js';
 import { NpcStat } from '#/engine/entity/NpcStat.js';
@@ -18,9 +19,54 @@ import { ScriptOpcode } from '#/engine/script/ScriptOpcode.js';
 import ScriptPointer, { ActiveNpc, ActivePlayer, checkedHandler } from '#/engine/script/ScriptPointer.js';
 import { CommandHandlers } from '#/engine/script/ScriptRunner.js';
 import ScriptState from '#/engine/script/ScriptState.js';
-import { CategoryTypeValid, check, CoordValid, DurationValid, HitTypeValid, HuntTypeValid, HuntVisValid, NpcModeValid, NpcStatValid, NpcTypeValid, NumberNotNull, ParamTypeValid, QueueValid, SpotAnimTypeValid } from '#/engine/script/ScriptValidators.js';
+import {
+    CategoryTypeValid,
+    check,
+    CoordValid,
+    DurationValid,
+    HitTypeValid,
+    HuntTypeValid,
+    HuntVisValid,
+    NpcModeValid,
+    NpcStatValid,
+    NpcTypeValid,
+    NumberNotNull,
+    ParamTypeValid,
+    QueueValid,
+    SpotAnimTypeValid
+} from '#/engine/script/ScriptValidators.js';
 import ServerTriggerType from '#/engine/script/ServerTriggerType.js';
 import World from '#/engine/World.js';
+
+/**
+ * Multi-npc base types (e.g. tbwt_tiadeche_multinpc_shore) have no display name/models.
+ * `npc_name` / `npc_type` for chatnpc must resolve like OpNpcHandler (player multivarp/varbit).
+ * Without this, chat modal title is the literal string "null".
+ */
+function resolveNpcTypeForPlayer(base: NpcType, player: Player | null): NpcType {
+    if (!player || !base.multinpc || base.multinpc.length === 0) {
+        return base;
+    }
+    if (base.multivarp !== -1) {
+        const state = player.getVar(base.multivarp) as number;
+        if (state >= 0 && state < base.multinpc.length && base.multinpc[state] !== -1) {
+            return NpcType.get(base.multinpc[state]);
+        }
+    } else if (base.multivarbit !== -1) {
+        const state = player.getVarBit(base.multivarbit);
+        if (state >= 0 && state < base.multinpc.length && base.multinpc[state] !== -1) {
+            return NpcType.get(base.multinpc[state]);
+        }
+    }
+    return base;
+}
+
+function activeNpcDisplayType(state: ScriptState): NpcType {
+    const base = NpcType.get(state.activeNpc.type);
+    // Prefer active player pointer used by chat / ops
+    const player = state._activePlayer ?? state._activePlayer2;
+    return resolveNpcTypeForPlayer(base, player);
+}
 
 const NpcOps: CommandHandlers = {
     [ScriptOpcode.NPC_FINDUID]: state => {
@@ -257,7 +303,8 @@ const NpcOps: CommandHandlers = {
     }),
 
     [ScriptOpcode.NPC_TYPE]: checkedHandler(ActiveNpc, state => {
-        state.pushInt(check(state.activeNpc.type, NpcTypeValid).id);
+        // Chathead if_setnpchead(npc_type) — concrete form, not multi base
+        state.pushInt(activeNpcDisplayType(state).id);
     }),
 
     [ScriptOpcode.NPC_DAMAGE]: checkedHandler(ActiveNpc, state => {
@@ -268,7 +315,8 @@ const NpcOps: CommandHandlers = {
     }),
 
     [ScriptOpcode.NPC_NAME]: checkedHandler(ActiveNpc, state => {
-        state.pushString(check(state.activeNpc.type, NpcTypeValid).name ?? 'null');
+        // chatnpc → if_settext title; multi base has name=null → literal "null" in modal
+        state.pushString(activeNpcDisplayType(state).name ?? 'null');
     }),
 
     [ScriptOpcode.NPC_UID]: checkedHandler(ActiveNpc, state => {

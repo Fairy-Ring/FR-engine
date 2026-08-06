@@ -10,7 +10,7 @@ import type { HuntVis } from '#/engine/entity/hunt/HuntVis.js';
 import { Interaction } from '#/engine/entity/Interaction.js';
 import Player from '#/engine/entity/Player.js';
 import { PlayerQueueType, ScriptArgument } from '#/engine/entity/PlayerQueueRequest.js';
-import { PlayerStat } from '#/engine/entity/PlayerStat.js';
+import { PlayerStat, PlayerStatEnabled } from '#/engine/entity/PlayerStat.js';
 import { findPath } from '#/engine/GameMap.js';
 import { PlayerHuntAllCommandIterator } from '#/engine/script/ScriptIterators.js';
 import { ScriptOpcode } from '#/engine/script/ScriptOpcode.js';
@@ -500,6 +500,15 @@ const PlayerOps: CommandHandlers = {
         state.pushInt(total);
     }),
 
+    /**
+     * Content: `stat_enabled(stat)(int)` → 1 if `PlayerStatEnabled[stat]`.
+     * Gate skill guides / UI while Slayer/Farming scripts exist but XP is off.
+     */
+    [ScriptOpcode.STAT_ENABLED]: state => {
+        const stat: PlayerStat = check(state.popInt(), PlayerStatValid);
+        state.pushInt(PlayerStatEnabled[stat] ? 1 : 0);
+    },
+
     [ScriptOpcode.STAT_BASE]: checkedHandler(ActivePlayer, state => {
         const stat: PlayerStat = check(state.popInt(), PlayerStatValid);
 
@@ -666,7 +675,7 @@ const PlayerOps: CommandHandlers = {
         check(xan, NumberNotNull);
         check(yan, NumberNotNull);
         check(zoom, NumberNotNull);
-        
+
         state.activePlayer.write(new IfSetAngle(xan, com, zoom, yan));
     }),
 
@@ -1240,8 +1249,8 @@ const PlayerOps: CommandHandlers = {
         const objType = ObjType.getByName(name);
 
         state.activePlayer.addWealthEvent({
-            event_type: eventType, 
-            account_items: [{ id: objType?.id, name, count }], 
+            event_type: eventType,
+            account_items: [{ id: objType?.id, name, count }],
             account_value: value
         });
     }),
@@ -1295,12 +1304,12 @@ const PlayerOps: CommandHandlers = {
 
     [ScriptOpcode.P_TRANSMOGRIFY]: checkedHandler(ActivePlayer, state => {
         const id = state.popInt();
-        if(id < -1 || id >= NpcType.count) {
+        if (id < -1 || id >= NpcType.count) {
             throw new Error('Invalid npc.');
         }
 
         state.activePlayer.npcId = id;
-    }),
+    })
 };
 
 /**

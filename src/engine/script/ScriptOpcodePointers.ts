@@ -469,6 +469,8 @@ const ScriptOpcodePointers: {
         require: ['active_player'],
         require2: ['active_player2']
     },
+    // No active_player required — pure engine table read
+    [ScriptOpcode.STAT_ENABLED]: {},
     [ScriptOpcode.STAT_HEAL]: {
         require: ['active_player'],
         require2: ['active_player2']
@@ -1009,7 +1011,7 @@ const ScriptOpcodePointers: {
     },
     [ScriptOpcode.DB_LISTALL_WITH_COUNT]: {
         set: ['find_db']
-    },
+    }
 };
 
 export default ScriptOpcodePointers;

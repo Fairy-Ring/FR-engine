@@ -104,6 +104,11 @@ export function packInvConfigs(configs: Map<string, ConfigLine[]>): { client: Pa
             const stock = [];
 
             let size = 0;
+            // Dual stock key conventions in content:
+            //   0-based: stock0 = first slot (unpack dumps, castlewars, smithing)
+            //   1-based: stock1 = first slot (shops / authentic LC pack style)
+            // If any stock0 line exists, treat keys as 0-based; otherwise stockN → slot N-1.
+            const hasStock0 = config.some(({ key }) => key === 'stock0');
             for (let j = 0; j < config.length; j++) {
                 const { key, value } = config[j];
 
@@ -122,13 +127,20 @@ export function packInvConfigs(configs: Map<string, ConfigLine[]>): { client: Pa
                     server.p1(2);
                     server.p2(value as number);
                 } else if (key.startsWith('stock')) {
-                    const index = parseInt(key.substring(5)) - 1;
+                    const n = parseInt(key.substring(5), 10);
+                    if (Number.isNaN(n) || n < 0) {
+                        throw packStepError(debugname, `Invalid stock key ${key}`);
+                    }
+                    const index = hasStock0 ? n : n - 1;
+                    if (index < 0) {
+                        throw packStepError(debugname, `Invalid stock key ${key}`);
+                    }
                     if (typeof stock[index] !== 'undefined') {
-                        throw packStepError(debugname, `Duplicate stock${index + 1} lines, one will overwrite the other.`);
+                        throw packStepError(debugname, `Duplicate ${key} (slot ${index}), one will overwrite the other.`);
                     }
 
                     if (index >= size) {
-                        throw packStepError(debugname, `stock${index + 1} is larger than size=${size}`);
+                        throw packStepError(debugname, `${key} slot ${index} is larger than size=${size}`);
                     }
 
                     stock[index] = value;

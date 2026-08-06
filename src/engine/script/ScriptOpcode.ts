@@ -430,7 +430,6 @@ export const enum ScriptOpcode {
     DATE_MINUTES, // derived
     DATE_RUNEDAY, // derived
 
-
     // Struct ops (4700-4799)
     STRUCT_PARAM = 4700,
 
@@ -452,6 +451,13 @@ export const enum ScriptOpcode {
     ERROR,
     GETTIMESPENT, // custom: used to profile script execution (current duration)
     TIMESPENT, // custom: used to profile script execution (record start time)
+
+    /**
+     * LC extension: `stat_enabled(stat)(int)` — reads `PlayerStatEnabled[stat]`.
+     * Fixed high id so packing does not renumber official opcodes.
+     * Used to gate skill-guide UI while Slayer/Farming are content-live but XP-off.
+     */
+    STAT_ENABLED = 10010
 }
 
 export const ScriptOpcodeMap: Map<string, number> = new Map([
@@ -877,8 +883,7 @@ export const ScriptOpcodeMap: Map<string, number> = new Map([
     ['ERROR', ScriptOpcode.ERROR],
     ['GETTIMESPENT', ScriptOpcode.GETTIMESPENT],
     ['TIMESPENT', ScriptOpcode.TIMESPENT],
+    ['STAT_ENABLED', ScriptOpcode.STAT_ENABLED]
 ]);
 
-export const ScriptOpcodeNameMap: Map<number, string> = new Map(
-    Array.from(ScriptOpcodeMap.entries()).map(([key, value]) => [value, key])
-);
+export const ScriptOpcodeNameMap: Map<number, string> = new Map(Array.from(ScriptOpcodeMap.entries()).map(([key, value]) => [value, key]));

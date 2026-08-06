@@ -1930,6 +1930,7 @@ class World {
 
                 this.newPlayers.add(player);
                 client.state = 1;
+                printInfo(`[World] login accepted user=${username} saveLen=${save.length} players≈${this.getTotalPlayers()}+pending`);
             } catch (err) {
                 if (err instanceof Error) {
                     console.error(username, err.message);

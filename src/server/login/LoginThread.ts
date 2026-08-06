@@ -72,19 +72,23 @@ async function handleRequests(parentPort: ParentPort, msg: any) {
                 }
 
                 if (!fs.existsSync(`data/players/${profile}/${username}.sav`)) {
+                    // New account: empty save so World → PlayerLoading blank-player path
+                    // (reply 4 is not a World error code; use 0 for success parity with existing sav)
+                    console.info(`[LoginThread] new account file-mode login user=${username} save=empty reply=0`);
                     parentPort.postMessage({
                         type: 'player_login',
                         socket,
                         username,
                         lowMemory,
                         reconnecting,
-                        reply: 4,
+                        reply: 0,
                         staffmodlevel,
-                        save: null,
+                        save: new Uint8Array(),
                         account_id: 1,
                         members: Environment.NODE_MEMBERS
                     });
                 } else {
+                    console.info(`[LoginThread] existing sav file-mode login user=${username} reply=0`);
                     parentPort.postMessage({
                         type: 'player_login',
                         socket,
