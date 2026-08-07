@@ -48,7 +48,7 @@ export const PlayerStatMap: Map<string, number> = new Map([
 
 export const PlayerStatNameMap: Map<number, string> = new Map(Array.from(PlayerStatMap.entries()).map(([key, value]) => [value, key]));
 
-// [18] SLAYER = true (S0 2026-08-07); [19] FARMING stays false until F1 scripts
-export const PlayerStatEnabled = [true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, false, true];
+// [18] SLAYER = true (S0 2026-08-07); [19] FARMING = true with F1 potato XP path (2026-08-07)
+export const PlayerStatEnabled = [true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true];
 
 export const PlayerStatFree = [true, true, true, true, true, true, true, true, true, false, true, true, true, true, true, false, false, false, false, false, true];
