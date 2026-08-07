@@ -43,13 +43,12 @@ export const PlayerStatMap: Map<string, number> = new Map([
     ['THIEVING', PlayerStat.THIEVING],
     ['SLAYER', PlayerStat.SLAYER],
     ['FARMING', PlayerStat.FARMING],
-    ['RUNECRAFT', PlayerStat.RUNECRAFT],
+    ['RUNECRAFT', PlayerStat.RUNECRAFT]
 ]);
 
-export const PlayerStatNameMap: Map<number, string> = new Map(
-    Array.from(PlayerStatMap.entries()).map(([key, value]) => [value, key])
-);
+export const PlayerStatNameMap: Map<number, string> = new Map(Array.from(PlayerStatMap.entries()).map(([key, value]) => [value, key]));
 
-export const PlayerStatEnabled = [true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, false, false, true];
+// [18] SLAYER = true (S0 2026-08-07); [19] FARMING stays false until F1 scripts
+export const PlayerStatEnabled = [true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, false, true];
 
 export const PlayerStatFree = [true, true, true, true, true, true, true, true, true, false, true, true, true, true, true, false, false, false, false, false, true];
