@@ -81,6 +81,11 @@ Open the management/setup UI (Lost City default often `http://localhost:8898/set
 * Class file version errors — wrong Java major; set `JAVA_PATH` in `.env` if needed.  
 * Pack orphans under `BUILD_VERIFY=true` — known experiment friction; see workspace pack notes (do not treat soft skip as authenticity).
 
+
+## Completeness disclaimer
+
+We do **not** claim this tree **is** authentic, original, or complete. Work is ongoing under an accuracy bar; humans and agents make mistakes. **Good-faith contributions from all** are welcome and will not be dismissed without clear rationale (see companion workspace `CONTRIBUTING.md`).
+
 ## License
 
 This project is licensed under the [MIT License](LICENSE) as upstream.  
