@@ -1240,72 +1240,6 @@ export function install(client, hooks = {}) {
       const code = OP_HELD[idx] ?? OP_HELD[0];
       return actions.menuAction(code, item.id, item.slot, item.comId);
     },
-    /**
-     * Remove one worn item (equipment side tab).
-     * Content: [inv_button1,wornitems:worn] → ~unequip — wire is **INV_BUTTON1**, not OP_HELD.
-     * (mid36 FAIL used OP_HELD / obj Wear iop — no server unequip.)
-     * menuAction(INV_BUTTON1, objId, slot, comId) ≡ Client INV_BUTTON packing.
-     */
-    unequip(nameSubstr) {
-      actions.setSideTab(4);
-      const want = String(nameSubstr).toLowerCase();
-      const list = reader.equipment() ?? [];
-      const item =
-        list.find(i => i?.name && String(i.name).toLowerCase() === want) ??
-        list.find(i => i?.name && String(i.name).toLowerCase().includes(want));
-      if (!item || item.id == null || item.slot == null || item.comId == null) return false;
-      // option1=Remove on wornitems inv → INV_BUTTON1
-      return actions.invButton(item.id | 0, item.slot | 0, item.comId | 0, 1);
-    },
-    /** Unequip every worn slot (up to passes). Returns names still worn. */
-    unequipAll(passes = 8) {
-      for (let p = 0; p < (passes | 0); p++) {
-        actions.setSideTab(4);
-        const list = reader.equipment() ?? [];
-        if (!list.length) return [];
-        for (const it of list) {
-          if (!it?.name) continue;
-          // INV_BUTTON Remove; one tick between so engine processes
-          actions.unequip(it.name);
-        }
-      }
-      actions.setSideTab(4);
-      const left = [];
-      for (const it of reader.equipment() ?? []) {
-        if (it?.name) left.push(it.name);
-      }
-      return left;
-    },
-    /**
-     * Eat food only when it mostly pays off (missing HP ≥ heal), or emergency low HP.
-     * Content: lobster `stat_heal,hitpoints,12,0` (consume_normal.dbrow).
-     * Avoids fight thrash that spams Eat every N ticks and dumps a full stack at ~full HP.
-     *
-     * @param {string} [nameSubstr='Lobster']
-     * @param {number} [heal=12] absolute heal amount for this food
-     * @param {{ minMissing?: number, floor?: number, op1based?: number }} [opts]
-     * @returns {{ ate: boolean, missing: number, effective: number, base: number, reason: string }}
-     */
-    eatIfNeeded(nameSubstr = 'Lobster', heal = 12, opts = {}) {
-      const h = Math.max(1, heal | 0);
-      const minMissing = opts.minMissing != null ? opts.minMissing | 0 : h;
-      const hp = reader.hitpoints?.() ?? { effective: 1, base: 1 };
-      const effective = (hp.effective | 0) || 0;
-      const base = (hp.base | 0) || 1;
-      const missing = Math.max(0, base - effective);
-      const floor =
-        opts.floor != null ? opts.floor | 0 : Math.max(8, Math.floor(base * 0.2));
-      let reason = 'full';
-      if (missing >= minMissing) reason = 'deficit';
-      else if (effective <= floor) reason = 'floor';
-      else {
-        return { ate: false, missing, effective, base, reason: 'skip' };
-      }
-      actions.setSideTab(3);
-      const op = opts.op1based != null ? opts.op1based | 0 : 1; // Eat = iop1 for lobster
-      const ate = !!actions.heldOp(nameSubstr, op);
-      return { ate, missing, effective, base, reason: ate ? reason : 'no-food' };
-    },
     closeModal() {
       const main = client.mainModalId | 0;
       if (main === -1) return false;
@@ -1398,15 +1332,11 @@ export function install(client, hooks = {}) {
       }
     },
     /**
-     * Logout for mainlandAccount relog (harness / future bot test tools).
-     * Prefer IF_BUTTON on `logout:try_logout` (com 2458) → server p_logout (clean session).
-     * Socket-drop `client.logout()` alone is dirty: engine holds the player → long relog.
-     * Keep this in attach only — do not move into pure Client-TS.
+     * Soft logout for mainlandAccount relog (rs2b0t harness).
+     * Side icons / tutorial UI lock refresh only on next login payload.
      */
     logout() {
       try {
-        // Clean path first (same id as rs2b0t tools/lib/harness LOGOUT_BUTTON)
-        if (actions.ifButton(2458)) return true;
         if (typeof client.logout === 'function') {
           void client.logout();
           return true;
