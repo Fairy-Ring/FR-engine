@@ -30,15 +30,15 @@ Reverse-engineered engine code designed to simulate early RS2 cycle behaviour, w
 
 Upstream organizes historical versions into branches; **rs2-r377** is this project’s 377 working branch (may diverge from Lost City `377-wip` / tips).
 
-## Launch-together
+## Companion repos
 
-Intended to go **public with** content, client-ts, and workspace under the **Fairy Ring** brand (`FR-content` / `FR-engine` / `FR-client-ts` / `fairy-ring-workspace`). Visibility flips only on operator call.
+Public under **Fairy Ring** (separate remotes):
 
-| Companion | Role |
-|-----------|------|
-| **Content** | Period scripts/configs/maps |
-| **Client-TS** | Pure browser client (no harness hooks) |
-| **Workspace** | Docs, residual bar, harness toys, isolation scripts |
+| Repo | Role |
+|------|------|
+| [FR-content](https://github.com/Fairy-Ring/FR-content) | Period scripts/configs/maps |
+| [FR-client-ts](https://github.com/Fairy-Ring/FR-client-ts) | Pure browser client (no harness hooks) |
+| [fairy-ring-workspace](https://github.com/Fairy-Ring/fairy-ring-workspace) | Docs, residual bar, harness toys, isolation scripts |
 
 ## Getting started
 
@@ -100,4 +100,4 @@ See [NOTICE.md](NOTICE.md).
 - Lost City forum: https://lostcity.rs/
 
 **Never push experiment work to `LostCityRS/*` without explicit permission.**  
-Private backup remote (operator): `private` → `acfrazier/FR-engine`.
+Push remote (operator): `private` → [Fairy-Ring/FR-engine](https://github.com/Fairy-Ring/FR-engine).
