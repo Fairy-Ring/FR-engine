@@ -8,7 +8,7 @@
 | **Branch** | `rs2-r377` |
 | **Upstream lineage** | [LostCityRS/Engine-TS](https://github.com/LostCityRS/Engine-TS) **`377-wip`** @ `94fcfa2d2c2fc5812e6d448a5e4a04fd73879fd3` |
 | **Provenance** | [PROVENANCE.md](PROVENANCE.md) — full SHA pin + history note |
-| **Companion workspace** | [Fairy Ring workspace](https://github.com/acfrazier/fairy-ring-workspace) |
+| **Companion workspace** | [Fairy Ring workspace](https://github.com/Fairy-Ring/fairy-ring-workspace) |
 | **Matching content** | Content fork on branch `rs2-r377` |
 
 ## Derived from Lost City — not Lost City
