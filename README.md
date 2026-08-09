@@ -1,70 +1,97 @@
-<div align="center">
-    <h1>Lost City - May 2, 2006</h1>
-</div>
+# rs2-r377 — Engine
 
-> [!NOTE]
-> Learn about our history and ethos on our forum: https://lostcity.rs/t/faq-what-is-lost-city/16
+**Server engine** (TypeScript) for **RuneScape revision 377** (~2 May 2006): cycle simulation, protocol, pack tools, management.
 
-Reverse-engineered engine code designed to accurately simulate the cycle behaviors of early RS2. Contains the necessary data tools and compatible network protocol.
+| | |
+|--|--|
+| **Public name** | **rs2-r377** (engine tree) |
+| **Branch** | `rs2-r377` |
+| **Upstream lineage** | [LostCityRS/Engine-TS](https://github.com/LostCityRS/Engine-TS) |
+| **Companion workspace** | [rs2-r377 workspace](https://github.com/acfrazier/LC-rs2-r377-workspace) |
+| **Matching content** | Content fork on branch `rs2-r377` |
 
-Game data is in the [Content](https://github.com/LostCityRS/Content) repository.
+## Derived from Lost City — not Lost City
 
-The project organizes historical versions into branches. You will need matching engine and content branches together to run the project.
+This repository is a **derivation** of open **Lost City / LostCityRS Engine-TS** work. We build on that tree under its license, with our own residual bar, isolation defaults, and process.
 
-## Getting Started
+**Derivation does not mean official.** This is **not** affiliated with, endorsed by, or representative of Lost City / LostCityRS, rs2b2t / N64Jive (unless they adopt material), or Jagex Ltd.
 
-> [!IMPORTANT]
-> If you run into issues, please see our [common issues](#common-issues).
+Do **not** present this repo as “Lost City Engine,” “LC,” or official LostCityRS.  
+See [NOTICE.md](NOTICE.md).
 
-The [Server](https://github.com/LostCityRS/Server) repository will simplify setup for most users. Download that repository and follow the instructions there.
+## AI use (explicit)
 
-### Manual Setup
+Development of this fork **uses AI tools and coding agents**. Humans own product judgment and authenticity claims. Test harness and prep cheats belong in the **workspace** (`tools/harness/`), not as purity claims in this tree.
 
-In absence of the [Server](https://github.com/LostCityRS/Server) scripts, download the specific engine and content repositories/branches you desire and extract them to the same parent folder.
+## What this tree is
+
+Reverse-engineered engine code designed to simulate early RS2 cycle behaviour, with data tools and a compatible network protocol. **Game data** lives in the **Content** repository (matching branch required).
+
+Upstream organizes historical versions into branches; **rs2-r377** is this project’s 377 working branch (may diverge from Lost City `377-wip` / tips).
+
+## Launch-together
+
+Intended to go **public with** content, client-ts, and workspace under the **rs2-r377** brand (GitHub names may still use legacy `LC-rs2-*` until rename at flip). Visibility flips only on operator call.
+
+| Companion | Role |
+|-----------|------|
+| **Content** | Period scripts/configs/maps |
+| **Client-TS** | Pure browser client (no harness hooks) |
+| **Workspace** | Docs, residual bar, harness toys, isolation scripts |
+
+## Getting started
+
+> Prefer the **workspace** runbooks for the full experiment stack (ports, pack policy, isolation). Below is a bare manual layout.
+
+### Manual setup
 
 ```sh
-git clone https://github.com/LostCityRS/Engine-TS -b 377-wip --single-branch engine
-git clone https://github.com/LostCityRS/Content -b 377-wip --single-branch content
+# same parent folder
+git clone <content-fork> -b rs2-r377 content
+git clone <this-engine-fork> -b rs2-r377 engine
 cd engine
 npm start
 ```
 
-\* *use `--single-branch` when you don't need to track the commit history of all versions*
-
-Open [http://localhost:8898/setup](http://localhost:8898/setup) to configure world settings.
-This page reads and writes `data/config/world.json` through the management server.
+Open the management/setup UI (Lost City default often `http://localhost:8898/setup`; **rs2-r377 isolation** uses different ports — see workspace `scripts/apply-isolation-config.sh` and runbooks).
 
 ### Client
 
-[Client-Java](https://github.com/LostCityRS/Client-Java) is available for all versions. This is a research project to decompile and understand the original code. It has minor fixes for OS and Java compatibility.
+- **Client-TS** fork (this project): pure 1:1 Java 377 → TypeScript for browsers.  
+- **Client-Java** (upstream Lost City): deob research client.  
+- Prebuilt client assets may be present under `public/` depending on build; treat workspace harness builds as **toys** when present.
 
-[Client-TS](https://github.com/LostCityRS/Client-TS) may be available depending on the version. This is a human-driven port of the original code to modern browsers. This gets prebuilt and included in this repository if available.
+### Dependencies
 
-You can use the original obfuscated compiled applet from this time period with these arguments: `java -cp runescape.jar client 10 0 highmem members 32`  
-Be aware it may have compatibility issues (that are addressed in the Client-Java repository).
+- [Node.js 24+](https://nodejs.org) (align with upstream Engine-TS expectations)
 
-## Dependencies
+> Tip: VS Code RuneScript extension (upstream marketplace): `2004scape.runescriptlanguage`
 
-- [Node.js 24+](https://nodejs.org)
+### Workflow (upstream-compatible)
 
-> [!TIP]
-> If you're using VS Code (recommended), [we have an extension to install on the marketplace.](https://marketplace.visualstudio.com/items?itemName=2004scape.runescriptlanguage)
+| Audience | Command |
+|----------|---------|
+| Content developers | `npm start` — watch scripts/configs, repack |
+| Engine developers | `npm run dev` — same + restart on engine changes |
 
-## Workflow
+### Common issues
 
-Content developers should run `npm start`. The server will watch for changes to scripts and configs, then automatically repack everything.
-
-Engine developers should run `npm run dev`. This does what `npm start` does above, but also completely restarts the server when engine code has changed.
-
-## Common Issues
-
-* `'"java"' is not recognized as an internal or external command`  
-
-You do not have Java installed. See [dependencies](#dependencies) above.
-
-* `XXXXX has been compiled by a more recent version of the Java Runtime (class file version 61.0), this version of the Java Runtime only recognizes class file versions up to 52.0`  
-
-You are using Java 8 or Java 11. If you have multiple Java versions, you will need to set `JAVA_PATH=path-to-java.exe` in your .env file manually.
+* `'"java"' is not recognized...` — Java not installed (some pack steps may need it).  
+* Class file version errors — wrong Java major; set `JAVA_PATH` in `.env` if needed.  
+* Pack orphans under `BUILD_VERIFY=true` — known experiment friction; see workspace pack notes (do not treat soft skip as authenticity).
 
 ## License
-This project is licensed under the [MIT License](https://opensource.org/licenses/MIT). See the [LICENSE](LICENSE) file for details.
+
+This project is licensed under the [MIT License](LICENSE) as upstream.  
+Do **not** relicense Lost City–originated code as original work of this project.  
+See [NOTICE.md](NOTICE.md).
+
+## Upstream
+
+- Engine-TS: https://github.com/LostCityRS/Engine-TS  
+- Content: https://github.com/LostCityRS/Content  
+- Server (simplified setup, upstream): https://github.com/LostCityRS/Server  
+- Lost City forum: https://lostcity.rs/
+
+**Never push experiment work to `LostCityRS/*` without explicit permission.**  
+Private backup remote (operator): `private` → `acfrazier/LC-rs2-r377-engine` (rename target: `rs2-r377-engine` at public flip).
