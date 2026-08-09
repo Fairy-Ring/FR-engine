@@ -1,10 +1,10 @@
-# rs2-r377 — Engine
+# Fairy Ring — Engine
 
 **Server engine** (TypeScript) for **RuneScape revision 377** (~2 May 2006): cycle simulation, protocol, pack tools, management.
 
 | | |
 |--|--|
-| **Public name** | **rs2-r377** (engine tree) |
+| **Public brand** | **Fairy Ring** (engine tree) |
 | **Branch** | `rs2-r377` |
 | **Upstream lineage** | [LostCityRS/Engine-TS](https://github.com/LostCityRS/Engine-TS) **`377-wip`** @ `94fcfa2d2c2fc5812e6d448a5e4a04fd73879fd3` |
 | **Provenance** | [PROVENANCE.md](PROVENANCE.md) — full SHA pin + history note |
