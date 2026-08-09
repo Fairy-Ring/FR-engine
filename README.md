@@ -8,7 +8,7 @@
 | **Branch** | `rs2-r377` |
 | **Upstream lineage** | [LostCityRS/Engine-TS](https://github.com/LostCityRS/Engine-TS) **`377-wip`** @ `94fcfa2d2c2fc5812e6d448a5e4a04fd73879fd3` |
 | **Provenance** | [PROVENANCE.md](PROVENANCE.md) — full SHA pin + history note |
-| **Companion workspace** | [rs2-r377 workspace](https://github.com/acfrazier/LC-rs2-r377-workspace) |
+| **Companion workspace** | [Fairy Ring workspace](https://github.com/acfrazier/fairy-ring-workspace) |
 | **Matching content** | Content fork on branch `rs2-r377` |
 
 ## Derived from Lost City — not Lost City
@@ -32,7 +32,7 @@ Upstream organizes historical versions into branches; **rs2-r377** is this proje
 
 ## Launch-together
 
-Intended to go **public with** content, client-ts, and workspace under the **rs2-r377** brand (GitHub names may still use legacy `LC-rs2-*` until rename at flip). Visibility flips only on operator call.
+Intended to go **public with** content, client-ts, and workspace under the **Fairy Ring** brand (`FR-content` / `FR-engine` / `FR-client-ts` / `fairy-ring-workspace`). Visibility flips only on operator call.
 
 | Companion | Role |
 |-----------|------|
@@ -100,4 +100,4 @@ See [NOTICE.md](NOTICE.md).
 - Lost City forum: https://lostcity.rs/
 
 **Never push experiment work to `LostCityRS/*` without explicit permission.**  
-Private backup remote (operator): `private` → `acfrazier/LC-rs2-r377-engine` (rename target: `rs2-r377-engine` at public flip).
+Private backup remote (operator): `private` → `acfrazier/FR-engine`.
