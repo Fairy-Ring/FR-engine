@@ -15,7 +15,7 @@
 
 This repository is a **derivation** of open **Lost City / LostCityRS Engine-TS** work. We build on that tree under its license, with our own residual bar, isolation defaults, and process.
 
-**Derivation does not mean official.** This is **not** affiliated with, endorsed by, or representative of Lost City / LostCityRS, rs2b2t / N64Jive (unless they adopt material), or Jagex Ltd.
+**Derivation does not mean official.** This is **not** official Lost City / LostCityRS and is **not** endorsed by Jagex Ltd. rs2b0t/rs2b2t patterns may be used as tools; this fork is not their product layer.
 
 Do **not** present this repo as “Lost City Engine,” “LC,” or official LostCityRS.  
 See [NOTICE.md](NOTICE.md).
