@@ -49,6 +49,7 @@ import Packet from '#/io/Packet.js';
 import ChatFilterSettings from '#/network/game/server/model/ChatFilterSettings.js';
 import HintArrow from '#/network/game/server/model/HintArrow.js';
 import IfClose from '#/network/game/server/model/IfClose.js';
+import IfOpenChat from '#/network/game/server/model/IfOpenChat.js';
 import IfSetTab from '#/network/game/server/model/IfSetTab.js';
 import LastLoginInfo from '#/network/game/server/model/LastLoginInfo.js';
 import MessageGame from '#/network/game/server/model/MessageGame.js';
@@ -2062,7 +2063,13 @@ export default class Player extends PathingEntity {
 
         this.modalState |= ModalState.CHAT;
         this.modalChat = com;
-        this.refreshModal = true;
+        // Write IF_OPENCHAT immediately so following if_settext in the same script
+        // arrives *after* open on the wire (mesbox_page open-then-settext).
+        // Deferred encodeOut-only open left SETTEXT before OPENCHAT → client showed
+        // messageN pack defaults (Line1–4) for Flamtaer sanctity mesbox.
+        this.write(new IfOpenChat(com));
+        this.lastModalChat = com;
+        this.refreshModal = false;
 
         // clear old suspended scripts
         if (this.activeScript?.execution === ScriptState.COUNTDIALOG || this.activeScript?.execution === ScriptState.PAUSEBUTTON) {
