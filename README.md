@@ -6,7 +6,8 @@
 |--|--|
 | **Public name** | **rs2-r377** (engine tree) |
 | **Branch** | `rs2-r377` |
-| **Upstream lineage** | [LostCityRS/Engine-TS](https://github.com/LostCityRS/Engine-TS) |
+| **Upstream lineage** | [LostCityRS/Engine-TS](https://github.com/LostCityRS/Engine-TS) **`377-wip`** @ `94fcfa2d2c2fc5812e6d448a5e4a04fd73879fd3` |
+| **Provenance** | [PROVENANCE.md](PROVENANCE.md) — full SHA pin + history note |
 | **Companion workspace** | [rs2-r377 workspace](https://github.com/acfrazier/LC-rs2-r377-workspace) |
 | **Matching content** | Content fork on branch `rs2-r377` |
 

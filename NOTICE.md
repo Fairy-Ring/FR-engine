@@ -7,7 +7,12 @@ Attribution and provenance for this **engine** fork.
 **rs2-r377 Engine** is an independent preservation / engineering fork of
 [LostCityRS/Engine-TS](https://github.com/LostCityRS/Engine-TS).
 
-It is a **derivation** of open Lost City work under its license, with our own residual process and branding.
+```text
+LostCityRS/Engine-TS@94fcfa2d2c2fc5812e6d448a5e4a04fd73879fd3  (branch 377-wip)
+```
+
+It is a **derivation** of open Lost City work under its license, with our own residual process and branding.  
+**Pinned details + verify commands:** [PROVENANCE.md](PROVENANCE.md).
 
 **Not affiliated with, endorsed by, or representative of** Lost City / LostCityRS, rs2b2t / N64Jive (unless they adopt material), or Jagex Ltd.
 
