@@ -1032,6 +1032,9 @@ const PlayerOps: CommandHandlers = {
 
     [ScriptOpcode.HEADICONS_SET]: state => {
         state.activePlayer.headicons = check(state.popInt(), NumberNotNull);
+        // Content usually follows with buildappearance; force APPEARANCE mask so 377
+        // overhead (pk/prayer indices) re-encodes even if a caller forgets.
+        state.activePlayer.buildAppearance(state.activePlayer.appearanceInv);
     },
 
     // https://x.com/JagexAsh/status/1791472651623370843

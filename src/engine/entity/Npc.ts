@@ -158,15 +158,18 @@ export default class Npc extends PathingEntity {
         // Process partial hunt logic
         if (this.huntMode !== -1) {
             const hunt = HuntType.get(this.huntMode);
+            // Guard: pack id / sequential hunt.dat mismatch (e.g. cowardly was pack 80
+            // while HuntType.count was 77) → get() undefined and NPE every tick.
+            if (hunt) {
+                if (hunt.nobodyNear !== HuntNobodyNear.PAUSEHUNT || rsbuf.getNpcObservers(this.nid) > 0 || hunt.type === HuntModeType.PLAYER) {
+                    // - hunt npc/obj/loc
+                    if (hunt.type !== HuntModeType.PLAYER) {
+                        this.huntAll(hunt);
+                    }
 
-            if (hunt.nobodyNear !== HuntNobodyNear.PAUSEHUNT || rsbuf.getNpcObservers(this.nid) > 0 || hunt.type === HuntModeType.PLAYER) {
-                // - hunt npc/obj/loc
-                if (hunt && hunt.type !== HuntModeType.PLAYER) {
-                    this.huntAll(hunt);
+                    // Increment huntclock
+                    this.huntClock++;
                 }
-
-                // Increment huntclock
-                this.huntClock++;
             }
         }
 

@@ -1368,12 +1368,41 @@ export default class Player extends PathingEntity {
         return Math.floor(base + Math.max(melee, range, magic));
     }
 
+    /**
+     * Content stores a **bitmask** in `headicons` (see headicon.constant / headicon_add).
+     * 377 appearance wire is **two signed indices** (Java ClientPlayer.method574):
+     *   gender(u8), headiconPk(s8), headiconPrayer(s8) — 0xFF = −1 = none.
+     * Client plots headicons_pk[pk] then headicons_prayer[prayer].
+     */
+    private encodeHeadicons377(): { pk: number; prayer: number } {
+        const m = this.headicons | 0;
+        // ^headicon_skull = 0
+        let pk = -1;
+        if ((m & (1 << 0)) !== 0) {
+            pk = 0;
+        }
+        // Prayer bits 3/4/5 → media headicons_prayer frames 0/1/2 (protect melee/missiles/magic)
+        // Content constants use bit indices 3–5 so they coexist with skull/multi/hint in one mask.
+        let prayer = -1;
+        if ((m & (1 << 3)) !== 0) {
+            prayer = 0; // protect from melee
+        } else if ((m & (1 << 4)) !== 0) {
+            prayer = 1; // protect from missiles
+        } else if ((m & (1 << 5)) !== 0) {
+            prayer = 2; // protect from magic
+        }
+        return { pk, prayer };
+    }
+
     generateAppearance(): Uint8Array {
         const stream = Packet.alloc(0);
 
         stream.p1(this.gender);
-        stream.p1(0xff); // prayer icon?
-        stream.p1(0xff); // skull icon?
+        // Was hardcoded 0xff/0xff → client always headiconPk/Prayer = −1 (no overhead).
+        // 377 order: pk then prayer (Java field1678, field1670).
+        const icons = this.encodeHeadicons377();
+        stream.p1(icons.pk < 0 ? 0xff : icons.pk & 0xff);
+        stream.p1(icons.prayer < 0 ? 0xff : icons.prayer & 0xff);
 
         const skippedSlots = [];
 
