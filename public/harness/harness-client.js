@@ -19836,12 +19836,18 @@ class TinyMidiPCM {
     const { _midi_render } = this.wasmModule;
     return _midi_render(this.soundfontPtr, midiMessagePtr, this.channels, this.sampleRate, this.pcmBufferPtr, this.bufferSize, this.msecsPtr);
   }
+  cancelRender() {
+    if (this.renderTimer !== undefined) {
+      window.clearTimeout(this.renderTimer);
+      this.renderTimer = undefined;
+    }
+  }
   render(midiBuffer) {
     this.ensureInitialized();
     if (!this.soundfontPtr) {
       throw new Error("no soundfont buffer set. call .setSoundfont");
     }
-    window.clearTimeout(this.renderTimer);
+    this.cancelRender();
     const { setValue, getValue, _tsf_reset, _tsf_channel_set_bank_preset } = this.wasmModule;
     setValue(this.msecsPtr, 0, "double");
     _tsf_reset(this.soundfontPtr);
@@ -19862,74 +19868,132 @@ class TinyMidiPCM {
     }, 16);
   }
 }
+var _midiEarlyQueue = [];
+var _midiGlueReady = false;
+function _ensureAudioContext() {
+  if (!window.audioContext) {
+    window.AudioContext = window.AudioContext || window.webkitAudioContext;
+    if (window.AudioContext) {
+      window.audioContext = new window.AudioContext({ sampleRate: 22050 });
+    }
+  }
+  return window.audioContext || null;
+}
 (async () => {
   const channels = 2;
   const sampleRate = 22050;
   const flushTime = 250;
   const renderInterval = 30;
-  const fadeInterval = 50;
-  const fadeStepDb = 0.25;
-  const fadeEndStep = 144;
-  const fadeResetStep = 200;
-  let fadeTimer = null;
-  let fade = fadeResetStep;
-  let fadeMidiBuffer = null;
-  let fadeVolume = 0;
-  let midiFade = false;
+  const AUDIO_LOOP_MS = 50;
+  const DEFAULT_MIDIVOL = 96;
+  const ac = _ensureAudioContext();
+  if (!ac) {
+    console.warn("[midi] no AudioContext — MIDI disabled");
+    return;
+  }
   let samples = new Float32Array;
-  let gainNode = window.audioContext.createGain();
-  gainNode.gain.setValueAtTime(0.1, window.audioContext.currentTime);
-  gainNode.connect(window.audioContext.destination);
-  let lastTime = window.audioContext.currentTime;
   let bufferSources = [];
+  let flushInterval = null;
+  let lastTime = ac.currentTime;
+  const gainNode = ac.createGain();
+  gainNode.connect(ac.destination);
+  function midivolToLinearGain(midivol2) {
+    const v = Math.max(0, Math.min(128, midivol2 | 0));
+    if (v <= 0) {
+      return 0;
+    }
+    const channel = 12800;
+    const mixed = (channel * v >>> 8) * channel;
+    const expr = Math.sqrt(mixed) + 0.5;
+    const exprMax = Math.sqrt((12800 * 128 >>> 8) * 12800) + 0.5;
+    return expr / exprMax * 0.133;
+  }
+  let playerVolume = DEFAULT_MIDIVOL;
+  function applyPlayerVolume(vol) {
+    playerVolume = vol | 0;
+    const g = midivolToLinearGain(playerVolume);
+    const t = ac.currentTime;
+    gainNode.gain.cancelScheduledValues(t);
+    gainNode.gain.setValueAtTime(g, t);
+  }
+  function midiPlayerSetVolume(velocity, volume) {
+    let v = volume | 0;
+    v = v * Math.pow(0.1, velocity * 0.0005) + 0.5 | 0;
+    if (playerVolume === v) {
+      return;
+    }
+    applyPlayerVolume(v);
+  }
+  let isRunning = false;
+  let loopSong = false;
+  let activeMidiBytes = null;
   const tinyMidiPCM = new TinyMidiPCM({
     renderInterval,
     onPCMData: (pcm) => {
-      let float32 = new Float32Array(pcm.buffer);
-      let temp = new Float32Array(samples.length + float32.length);
+      const float32 = new Float32Array(pcm.buffer, pcm.byteOffset, pcm.byteLength / 4 | 0);
+      if (float32.length === 0) {
+        return;
+      }
+      const temp = new Float32Array(samples.length + float32.length);
       temp.set(samples, 0);
       temp.set(float32, samples.length);
       samples = temp;
     },
-    onRenderEnd: (ms) => {},
+    onRenderEnd: () => {
+      if (loopSong && isRunning && activeMidiBytes) {
+        lastTime = ac.currentTime;
+        try {
+          tinyMidiPCM.render(activeMidiBytes);
+        } catch (e) {
+          console.warn("[midi] loop render failed", e);
+          isRunning = false;
+        }
+      } else {
+        isRunning = false;
+      }
+    },
     bufferSize: 1024 * 100,
     sampleRate
   });
   await tinyMidiPCM.init();
-  try {
+  async function loadXpSoundfont() {
     const sfUrls = [
       new URL("SCC1_Florestan.sf2", import.meta.url).href,
       "/client/SCC1_Florestan.sf2",
       "/harness/SCC1_Florestan.sf2"
     ];
-    let loaded = false;
     for (const url of sfUrls) {
       try {
-        const soundfontRes = await fetch(url);
-        if (!soundfontRes.ok)
+        const res = await fetch(url);
+        if (!res.ok)
           continue;
-        const soundfontBuffer = new Uint8Array(await soundfontRes.arrayBuffer());
-        if (soundfontBuffer.byteLength < 1000)
+        const buf = new Uint8Array(await res.arrayBuffer());
+        if (buf.byteLength < 1000)
           continue;
-        tinyMidiPCM.setSoundfont(soundfontBuffer);
-        console.info(`[tinymidipcm] soundfont loaded from ${url} (${soundfontBuffer.byteLength} bytes)`);
-        loaded = true;
-        break;
+        tinyMidiPCM.setSoundfont(buf);
+        console.info(`[midi] setSoundfont Florestan from ${url} (${buf.byteLength} bytes)`);
+        return true;
       } catch {}
     }
-    if (!loaded) {
-      console.warn("[tinymidipcm] SCC1_Florestan.sf2 not found beside bundle or at /client|/harness — MIDI disabled");
-    }
-  } catch (err) {
-    console.warn("[tinymidipcm] failed to load SCC1_Florestan.sf2; MIDI disabled", err);
+    console.warn("[midi] SCC1_Florestan.sf2 missing — MIDI disabled until bank available");
+    return false;
   }
+  await loadXpSoundfont();
+  applyPlayerVolume(DEFAULT_MIDIVOL);
   function flush() {
-    if (!window.audioContext || !samples.length) {
+    if (!ac || !samples.length) {
       return;
     }
-    let bufferSource = window.audioContext.createBufferSource();
-    const length = samples.length / channels;
-    const audioBuffer = window.audioContext.createBuffer(channels, length, sampleRate);
+    if (ac.state === "suspended") {
+      ac.resume().catch(() => {});
+    }
+    const bufferSource = ac.createBufferSource();
+    const length = samples.length / channels | 0;
+    if (length <= 0) {
+      samples = new Float32Array;
+      return;
+    }
+    const audioBuffer = ac.createBuffer(channels, length, sampleRate);
     for (let channel = 0;channel < channels; channel++) {
       const audioData = audioBuffer.getChannelData(channel);
       let offset = channel;
@@ -19938,8 +20002,8 @@ class TinyMidiPCM {
         offset += channels;
       }
     }
-    if (lastTime < window.audioContext.currentTime) {
-      lastTime = window.audioContext.currentTime;
+    if (lastTime < ac.currentTime) {
+      lastTime = ac.currentTime;
     }
     bufferSource.buffer = audioBuffer;
     bufferSource.connect(gainNode);
@@ -19948,116 +20012,208 @@ class TinyMidiPCM {
     lastTime += audioBuffer.duration;
     samples = new Float32Array;
   }
-  let flushInterval;
-  function decibelsToGain(volume = 0) {
-    return Math.pow(10, volume / 20);
-  }
-  function applyOutputVolumeDb(volume = 0) {
-    const currentTime = window.audioContext.currentTime;
-    gainNode.gain.cancelScheduledValues(currentTime);
-    gainNode.gain.setValueAtTime(decibelsToGain(volume), currentTime);
-  }
-  function stop() {
+  function stopPcm() {
     if (flushInterval) {
       clearInterval(flushInterval);
+      flushInterval = null;
     }
     samples = new Float32Array;
+    tinyMidiPCM.cancelRender();
     if (bufferSources.length) {
-      let temp = gainNode.gain.value;
-      gainNode.gain.setValueAtTime(0, window.audioContext.currentTime);
-      bufferSources.forEach((bufferSource) => {
-        bufferSource.stop(window.audioContext.currentTime);
+      const t = ac.currentTime;
+      bufferSources.forEach((s) => {
+        try {
+          s.stop(t);
+        } catch {}
       });
       bufferSources = [];
-      gainNode.gain.setValueAtTime(temp, window.audioContext.currentTime);
     }
   }
-  function start(volume, midiBuffer) {
-    if (!tinyMidiPCM.soundfontPtr) {
+  function midiPlayerPlay(midiBytes, loop, volume) {
+    if (!tinyMidiPCM.soundfontPtr || !midiBytes || midiBytes.length === 0) {
+      console.warn("[midi] play skipped: no soundfont or empty mid", {
+        sf: !!tinyMidiPCM.soundfontPtr,
+        len: midiBytes && midiBytes.length
+      });
       return;
     }
-    applyOutputVolumeDb(volume);
-    lastTime = window.audioContext.currentTime;
+    if (ac.state === "suspended") {
+      ac.resume().catch(() => {});
+    }
+    stopPcm();
+    activeMidiBytes = midiBytes instanceof Uint8Array ? midiBytes : new Uint8Array(midiBytes);
+    loopSong = loop === 1;
+    isRunning = true;
+    applyPlayerVolume(volume | 0);
+    lastTime = ac.currentTime;
     flushInterval = setInterval(flush, flushTime);
-    tinyMidiPCM.render(midiBuffer);
-  }
-  function clearFadeTimer() {
-    if (fadeTimer) {
-      clearInterval(fadeTimer);
-      fadeTimer = null;
+    try {
+      tinyMidiPCM.render(activeMidiBytes);
+    } catch (e) {
+      console.warn("[midi] render failed", e);
+      isRunning = false;
     }
   }
-  function stepFade() {
-    if (!fadeMidiBuffer) {
-      clearFadeTimer();
+  function midiPlayerStop() {
+    isRunning = false;
+    loopSong = false;
+    activeMidiBytes = null;
+    stopPcm();
+  }
+  function midiPlayerRunning() {
+    return isRunning;
+  }
+  let midifade = 0;
+  let midivol = DEFAULT_MIDIVOL;
+  let midiCmd = "none";
+  let pendingMidi = null;
+  let midiFadingIn = false;
+  let midiFadingOut = false;
+  let midiFadeVol = 0;
+  function signlinkPlayMidi() {
+    if (midiFadingOut) {
       return;
     }
-    fade++;
-    applyOutputVolumeDb(-(fade * fadeStepDb));
-    if (fade >= fadeEndStep) {
-      const nextMidiBuffer = fadeMidiBuffer;
-      const nextVolume = fadeVolume;
-      fadeMidiBuffer = null;
-      clearFadeTimer();
-      stop();
-      start(nextVolume, nextMidiBuffer);
-      fade = -(nextVolume / fadeStepDb);
+    if (!midiFadingIn && midifade !== 0 && midiPlayerRunning()) {
+      midiFadingOut = true;
+      midiFadeVol = midivol;
+      return;
+    }
+    if (!pendingMidi) {
+      return;
+    }
+    try {
+      if (midifade !== 0 && midiFadingIn) {
+        midiFadingOut = false;
+        midiFadeVol = 0;
+        midiPlayerPlay(pendingMidi, midifade, midiFadeVol);
+      } else {
+        midiPlayerPlay(pendingMidi, midifade, midivol);
+      }
+    } catch (e) {
+      console.warn("[midi] play failed", e);
     }
   }
-  function startFadeTimer() {
-    clearFadeTimer();
-    stepFade();
-    if (fadeMidiBuffer) {
-      fadeTimer = setInterval(stepFade, fadeInterval);
+  function audioLoop() {
+    if (midiFadingIn) {
+      midiFadeVol += 8;
+      if (midiFadeVol > midivol) {
+        midiFadeVol = midivol;
+      }
+      midiPlayerSetVolume(0, midiFadeVol);
+      if (midiFadeVol === midivol) {
+        midiFadingIn = false;
+      }
+    } else if (midiFadingOut) {
+      midiFadeVol -= 8;
+      if (midiFadeVol < 0) {
+        midiFadeVol = 0;
+      }
+      midiPlayerSetVolume(0, midiFadeVol);
+      if (midiFadeVol === 0) {
+        midiFadingOut = false;
+        midiFadingIn = true;
+      }
+    }
+    if (midiCmd !== "none") {
+      if (midiCmd === "stop") {
+        midiPlayerStop();
+      } else if (midiCmd === "voladjust") {
+        midiPlayerSetVolume(0, midivol);
+      } else if (midiCmd === "play") {
+        signlinkPlayMidi();
+      }
+      if (!midiFadingOut) {
+        midiCmd = "none";
+      }
     }
   }
+  setInterval(audioLoop, AUDIO_LOOP_MS);
+  window._tinyMidiPlay = async (data, _volumeIgnored, fading) => {
+    if (!data || data.length === 0) {
+      return;
+    }
+    midifade = fading ? 1 : 0;
+    pendingMidi = data instanceof Uint8Array ? data.slice() : new Uint8Array(data);
+    midiCmd = "play";
+    audioLoop();
+  };
   window._tinyMidiStop = async () => {
-    midiFade = false;
-    fadeMidiBuffer = null;
-    clearFadeTimer();
-    stop();
-    fade = fadeResetStep;
+    midifade = 0;
+    midiFadingIn = false;
+    midiFadingOut = false;
+    midiCmd = "stop";
+    audioLoop();
   };
-  window._tinyMidiAdjustVolumeDb = (volume = 0) => {
-    if (fadeMidiBuffer) {
-      fadeVolume = volume;
-      return;
-    }
-    applyOutputVolumeDb(volume);
-    fade = midiFade ? -(volume / fadeStepDb) : fadeResetStep;
-  };
-  window._tinyMidiPlay = async (midiBuffer, volume, useFade) => {
-    if (!midiBuffer) {
-      return;
-    }
-    midiFade = useFade;
-    if (useFade) {
-      fadeMidiBuffer = midiBuffer;
-      fadeVolume = volume;
-      startFadeTimer();
-    } else {
-      fadeMidiBuffer = null;
-      clearFadeTimer();
-      stop();
-      start(volume, midiBuffer);
-      fade = fadeResetStep;
+  window._tinyMidiAdjustVolumeDb = (midivolJava, applyNow) => {
+    midivol = midivolJava | 0;
+    if (midivol < 0)
+      midivol = 0;
+    if (midivol > 128)
+      midivol = 128;
+    if (applyNow !== false) {
+      midiCmd = "voladjust";
+      audioLoop();
     }
   };
-})();
-function playMidi(data, volume, fade) {
-  if (window._tinyMidiPlay) {
-    window._tinyMidiPlay(data, volume, fade);
+  window._tinyMidiGetMidivol = () => midivol;
+  window._tinyMidiGetSoundfontInfo = () => tinyMidiPCM.soundfontPtr ? { name: "SCC1_Florestan.sf2", ready: true } : { name: null, ready: false };
+  window._tinyMidiSetSoundfont = async (buffer, name) => {
+    const u8 = buffer instanceof Uint8Array ? buffer : new Uint8Array(buffer);
+    tinyMidiPCM.setSoundfont(u8);
+    console.info(`[midi] setSoundfont ${name || "upload"} (${u8.byteLength} bytes)`);
+    return { name: name || "upload", bytes: u8.byteLength };
+  };
+  window._tinyMidiResetSoundfont = async () => {
+    const ok = await loadXpSoundfont();
+    return { ok };
+  };
+  _midiGlueReady = true;
+  while (_midiEarlyQueue.length) {
+    const item = _midiEarlyQueue.shift();
+    try {
+      if (item.op === "play") {
+        await window._tinyMidiPlay(item.data, 0, item.fade);
+      } else if (item.op === "stop") {
+        await window._tinyMidiStop();
+      } else if (item.op === "vol") {
+        window._tinyMidiAdjustVolumeDb(item.midivol, item.applyNow);
+      }
+    } catch (e) {
+      console.warn("[midi] early queue item failed", e);
+    }
   }
+  console.info("[midi] Jagex 377 control plane ready (Florestan bank, midivol scale)");
+})().catch((err) => {
+  console.error("[midi] glue init failed", err);
+});
+function playMidi(data, _volumeIgnored, fade) {
+  if (!data || data.length === 0) {
+    return;
+  }
+  if (window._tinyMidiPlay && _midiGlueReady) {
+    window._tinyMidiPlay(data, _volumeIgnored, fade);
+    return;
+  }
+  _midiEarlyQueue.push({
+    op: "play",
+    data: data instanceof Uint8Array ? data.slice() : new Uint8Array(data),
+    fade: !!fade
+  });
 }
-function setMidiVolume(volume) {
-  if (window._tinyMidiAdjustVolumeDb) {
-    window._tinyMidiAdjustVolumeDb(volume);
+function setMidiVolume(midivol, applyNow) {
+  if (window._tinyMidiAdjustVolumeDb && _midiGlueReady) {
+    window._tinyMidiAdjustVolumeDb(midivol, applyNow);
+    return;
   }
+  _midiEarlyQueue.push({ op: "vol", midivol, applyNow });
 }
-function stopMidi(fade) {
-  if (window._tinyMidiStop) {
-    window._tinyMidiStop(fade);
+function stopMidi(_fade) {
+  if (window._tinyMidiStop && _midiGlueReady) {
+    window._tinyMidiStop();
+    return;
   }
+  _midiEarlyQueue.push({ op: "stop" });
 }
 
 // vendor/client-ts/src/config/FloType.ts
@@ -24726,28 +24882,28 @@ class World {
       const minimapShape = MINIMAP_SHAPE[shape];
       const minimapRotation = MINIMAP_ROTATE[rotation];
       let off = 0;
-      if (overlay !== 0) {
+      if (underlay !== 0) {
         for (let i = 0;i < 4; i++) {
-          dst[offset] = minimapShape[minimapRotation[off++]] === 0 ? overlay : underlay;
-          dst[offset + 1] = minimapShape[minimapRotation[off++]] === 0 ? overlay : underlay;
-          dst[offset + 2] = minimapShape[minimapRotation[off++]] === 0 ? overlay : underlay;
-          dst[offset + 3] = minimapShape[minimapRotation[off++]] === 0 ? overlay : underlay;
+          dst[offset] = minimapShape[minimapRotation[off++]] === 0 ? underlay : overlay;
+          dst[offset + 1] = minimapShape[minimapRotation[off++]] === 0 ? underlay : overlay;
+          dst[offset + 2] = minimapShape[minimapRotation[off++]] === 0 ? underlay : overlay;
+          dst[offset + 3] = minimapShape[minimapRotation[off++]] === 0 ? underlay : overlay;
           offset += step;
         }
         return;
       }
       for (let i = 0;i < 4; i++) {
         if (minimapShape[minimapRotation[off++]] !== 0) {
-          dst[offset] = underlay;
+          dst[offset] = overlay;
         }
         if (minimapShape[minimapRotation[off++]] !== 0) {
-          dst[offset + 1] = underlay;
+          dst[offset + 1] = overlay;
         }
         if (minimapShape[minimapRotation[off++]] !== 0) {
-          dst[offset + 2] = underlay;
+          dst[offset + 2] = overlay;
         }
         if (minimapShape[minimapRotation[off++]] !== 0) {
-          dst[offset + 3] = underlay;
+          dst[offset + 3] = overlay;
         }
         offset += step;
       }
@@ -34424,7 +34580,7 @@ class Client extends GameShell {
   minimapFlagZ = 0;
   lastWalkPathLocal = [];
   midiActive = true;
-  midiVolume = 0;
+  midiVolume = 96;
   midiSong = -1;
   nextMidiSong = -1;
   nextMusicDelay = 0;
@@ -34502,6 +34658,13 @@ class Client extends GameShell {
       return;
     }
     playMidi(data, this.midiVolume, fading);
+  }
+  stopMidiJava() {
+    stopMidi(false);
+  }
+  setMidiVolumeJava(active, midivol) {
+    this.midiVolume = midivol;
+    setMidiVolume(midivol, active);
   }
   getIntParam(name, fallback = 0) {
     const value = this.searchParams.get(name);
@@ -43590,30 +43753,27 @@ class Client extends GameShell {
     } else if (clientcode === 3) {
       const lastMidiActive = this.midiActive;
       if (value === 0) {
-        this.midiVolume = 0;
+        this.setMidiVolumeJava(this.midiActive, 128);
         this.midiActive = true;
       } else if (value === 1) {
-        this.midiVolume = -4;
+        this.setMidiVolumeJava(this.midiActive, 96);
         this.midiActive = true;
       } else if (value === 2) {
-        this.midiVolume = -8;
+        this.setMidiVolumeJava(this.midiActive, 64);
         this.midiActive = true;
       } else if (value === 3) {
-        this.midiVolume = -12;
+        this.setMidiVolumeJava(this.midiActive, 32);
         this.midiActive = true;
       } else if (value === 4) {
         this.midiActive = false;
       }
-      if (this.midiActive) {
-        setMidiVolume(this.midiVolume);
-      }
-      if (this.midiActive !== lastMidiActive) {
+      if (this.midiActive !== lastMidiActive && !Client.lowMem) {
         if (this.midiActive) {
           this.midiSong = this.nextMidiSong;
           this.midiFading = true;
           this.onDemand?.request(2, this.midiSong);
         } else {
-          stopMidi(false);
+          this.stopMidiJava();
         }
         this.nextMusicDelay = 0;
       }
@@ -45272,7 +45432,7 @@ function install(client, hooks = {}) {
               name = lt.name ?? null;
               ops = Array.isArray(lt.op) ? [...lt.op] : [];
             }
-            if (want && (!name || name.toLowerCase() !== want))
+            if (want && (!name || !name.toLowerCase().includes(want)))
               continue;
             const x2 = (client.mapBuildBaseX | 0) + lx;
             const z = (client.mapBuildBaseZ | 0) + lz;
@@ -45486,6 +45646,112 @@ function install(client, hooks = {}) {
       visit(main);
       return out;
     },
+    mainModalInvItems() {
+      const main = client.mainModalId | 0;
+      if (main === -1)
+        return [];
+      const out = [];
+      const pushFrom = (invCom2, comIdHint) => {
+        if (!invCom2)
+          return;
+        const types = invCom2.linkObjType;
+        const nums = invCom2.linkObjNumber;
+        if (!types)
+          return;
+        const comId = (invCom2.id ?? comIdHint ?? main) | 0;
+        const len = types.length | 0;
+        for (let slot = 0;slot < len; slot++) {
+          const idPlusOne = types[slot] | 0;
+          if (idPlusOne <= 0)
+            continue;
+          const objId = idPlusOne - 1;
+          const ot = objList(objId);
+          const ops = Array.isArray(ot?.iop) ? [...ot.iop] : Array.isArray(ot?.op) ? [...ot.op] : [];
+          out.push({
+            slot,
+            id: objId,
+            count: nums ? nums[slot] | 0 : 1,
+            name: ot?.name ?? null,
+            comId,
+            ops
+          });
+        }
+      };
+      const REINIT_INV_COM = 19157;
+      const tryIds = [REINIT_INV_COM, main];
+      for (const id of tryIds) {
+        const com = ifGet(id);
+        if (com && (com.type === TYPE_INV || com.type === 2)) {
+          if (com.id == null)
+            com.id = id;
+          pushFrom(com, id);
+          if (out.length)
+            return out;
+        }
+      }
+      const invCom = findInvCom(main);
+      if (invCom) {
+        pushFrom(invCom, invCom.id);
+        if (out.length)
+          return out;
+      }
+      const visit = (comId) => {
+        const com = ifGet(comId);
+        if (!com)
+          return;
+        if (com.type === TYPE_INV || com.type === 2) {
+          if (com.id == null)
+            com.id = comId;
+          pushFrom(com, comId);
+        }
+        const kids = com.children;
+        if (kids)
+          for (let i2 = 0;i2 < kids.length; i2++)
+            visit(kids[i2] | 0);
+      };
+      visit(main);
+      return out;
+    },
+    mainModalTree() {
+      const main = client.mainModalId | 0;
+      if (main === -1)
+        return { main: -1, nodes: [] };
+      const nodes = [];
+      const visit = (comId, depth) => {
+        if (depth > 6)
+          return;
+        const com = ifGet(comId);
+        if (!com) {
+          nodes.push({ id: comId, miss: true, depth });
+          return;
+        }
+        const types = com.linkObjType;
+        let filled = 0;
+        if (types) {
+          for (let i2 = 0;i2 < types.length; i2++)
+            if ((types[i2] | 0) > 0)
+              filled++;
+        }
+        nodes.push({
+          id: comId,
+          depth,
+          type: com.type,
+          kids: com.children ? com.children.length : 0,
+          childIds: com.children ? [...com.children].slice(0, 12) : null,
+          linkLen: types ? types.length : 0,
+          filled
+        });
+        if (com.children)
+          for (const c of com.children)
+            visit(c | 0, depth + 1);
+      };
+      visit(main, 0);
+      for (let id = 19153;id <= 19158; id++) {
+        if (!nodes.some((n) => n.id === id))
+          visit(id, 0);
+      }
+      return { main, nodes };
+    },
     buttonByText(rootComId, label) {
       const want = String(label).toLowerCase();
       const root = rootComId >= 0 ? rootComId : client.mainModalId | 0;
@@ -45636,6 +45902,15 @@ function install(client, hooks = {}) {
         npcs,
         ground,
         chat: (reader.chat?.(maxChat) ?? []).map((l) => l?.username ? `${l.username}: ${l.text}` : String(l?.text ?? l ?? "")),
+        locs: (typeof reader.locs === "function" ? reader.locs({ maxDist: opts.maxLocDist ?? 14 }) : []).slice(0, opts.maxLocs ?? 10).map((l) => ({
+          name: l.name,
+          id: l.id,
+          d: l.distance,
+          lx: l.lx,
+          lz: l.lz,
+          x: l.x,
+          z: l.z
+        })),
         modals: reader.modals?.() ?? null,
         dialog: !!reader.dialogOpen?.(),
         modalMes: reader.modalMessage?.() || null,
@@ -45795,15 +46070,25 @@ function install(client, hooks = {}) {
         return false;
       return actions.menuAction(USEHELD_ONLOC, loc.typecode | 0, loc.lx | 0, loc.lz | 0);
     },
-    useHeldOnNpc(useNameOrSnap, npcName) {
+    useHeldOnNpc(useNameOrSnap, npcNameOrIndex) {
       const use = typeof useNameOrSnap === "object" && useNameOrSnap && useNameOrSnap.id != null ? useNameOrSnap : reader.invHas(useNameOrSnap);
-      const n = reader.nearestNpc(npcName);
-      if (!use || !n)
+      if (!use)
+        return false;
+      let n = null;
+      if (typeof npcNameOrIndex === "number" && Number.isFinite(npcNameOrIndex)) {
+        const list = reader.npcs?.() ?? [];
+        n = list.find((x2) => (x2.index | 0) === (npcNameOrIndex | 0)) || null;
+        if (!n)
+          n = { index: npcNameOrIndex | 0 };
+      } else {
+        n = reader.nearestNpc(npcNameOrIndex);
+      }
+      if (!n || n.index == null)
         return false;
       const comId = use.comId | 0 || 0;
       if (!actions.menuAction(USEHELD_START, use.id | 0, use.slot | 0, comId))
         return false;
-      return actions.menuAction(USEHELD_ONNPC, n.index, 0, 0);
+      return actions.menuAction(USEHELD_ONNPC, n.index | 0, 0, 0);
     },
     ifButton(comId) {
       return actions.menuAction(IF_BUTTON, 0, 0, comId | 0);
@@ -50291,7 +50576,7 @@ var morttonQuest = {
 };
 
 // tools/harness/script/logBus.ts
-var MAX = 400;
+var MAX = 800;
 var lines = [];
 var listeners = new Set;
 var LogBus = {
@@ -50299,7 +50584,18 @@ var LogBus = {
     return lines;
   },
   add(level, msg) {
-    lines.push({ level, msg: String(msg), t: performance.now() });
+    const m = String(msg);
+    const last = lines[lines.length - 1];
+    if (last && last.level === level && last.msg === m) {
+      last.t = performance.now();
+      for (const cb of listeners) {
+        try {
+          cb();
+        } catch {}
+      }
+      return;
+    }
+    lines.push({ level, msg: m, t: performance.now() });
     if (lines.length > MAX)
       lines.splice(0, lines.length - MAX);
     for (const cb of listeners) {
@@ -50418,11 +50714,6 @@ function el(tag, className) {
   const node = document.createElement(tag);
   node.className = className;
   return node;
-}
-function sectionTitle(text) {
-  const t = el("div", "rs2b0t-section-title");
-  t.textContent = text;
-  return t;
 }
 function row(parent, key) {
   const r = el("div", "rs2b0t-row");
@@ -53071,10 +53362,6 @@ var lastSelection = {
   label: "Draynor bank",
   radius: 3
 };
-function getLastWalkToSelection() {
-  return lastSelection;
-}
-
 class WalkToModal {
   backdrop;
   destSelect;
@@ -53355,17 +53642,14 @@ function nearestCombatNpc(snap) {
 
 class HarnessPanel {
   root;
+  cliBox;
   walkToBtn;
   clearBtn;
   shotBtn;
   walkStatus;
   walkToModal;
   stateCell;
-  actionCell;
-  thrashCell;
-  detailCell;
   tileCell;
-  sceneCell;
   dialogCell;
   energyCell;
   statsSec;
@@ -53379,7 +53663,7 @@ class HarnessPanel {
   lastThrashKey = "";
   lastThrashAt = 0;
   lastWalkKey = "";
-  lastActionKey = "";
+  lastCliKey = "";
   xpBase = null;
   unsubLog = null;
   raf = 0;
@@ -53398,21 +53682,18 @@ class HarnessPanel {
     sub.textContent = "r377";
     title.appendChild(sub);
     root.appendChild(title);
+    const cliSec = el("div", "rs2b0t-section rs2b0t-section-fixed");
+    this.cliBox = el("div", "rs2b0t-cli");
+    this.cliBox.textContent = "idle — thrashPoint / live snap when smoke runs";
+    cliSec.appendChild(this.cliBox);
+    root.appendChild(cliSec);
     const status = el("div", "rs2b0t-section rs2b0t-section-fixed");
-    status.appendChild(sectionTitle("status"));
     this.stateCell = row(status, "state");
-    this.actionCell = row(status, "action");
-    this.thrashCell = row(status, "thrash");
-    this.detailCell = row(status, "detail");
     this.tileCell = row(status, "tile");
-    this.sceneCell = row(status, "scene");
     this.dialogCell = row(status, "dialog");
     this.energyCell = row(status, "energy");
     this.walkStatus = row(status, "walk");
     this.walkStatus.textContent = "—";
-    this.actionCell.textContent = "—";
-    this.thrashCell.textContent = "—";
-    this.detailCell.textContent = "—";
     root.appendChild(status);
     const tools = el("div", "rs2b0t-buttons");
     this.walkToBtn = button(tools, "WalkTo…", () => this.handleWalkToOpen());
@@ -53452,14 +53733,14 @@ class HarnessPanel {
     root.appendChild(this.statsSec);
     this.applyStatsCollapsed();
     const logSection = el("div", "rs2b0t-section rs2b0t-section-log");
-    logSection.appendChild(sectionTitle("log"));
     this.logBox = el("div", "rs2b0t-log");
     logSection.appendChild(this.logBox);
     root.appendChild(logSection);
     this.unsubLog = LogBus.onChange(() => this.renderLog());
     this.renderLog();
+    this.renderCli();
     this.scheduleLoop();
-    LogBus.add("info", "panel eyes: action=combat|walk|standing; thrash=agent tag when present");
+    LogBus.add("info", "panel eyes: multicolor cli box (no residual header); live + thrashPoint");
   }
   destroy() {
     this.unsubLog?.();
@@ -53493,9 +53774,95 @@ class HarnessPanel {
       return;
     this.lastRender = now;
     this.renderStatus();
+    this.renderCli();
     this.renderWalk();
     this.renderStats();
     this.maybeThrashHeartbeat(now);
+  }
+  renderCli() {
+    const a = abi3();
+    const api = a?.scripts ?? null;
+    const running = !!api?.running?.();
+    const scriptName = api?.current?.() ?? null;
+    const cli = a?.cliResidual ?? null;
+    const ageMs = cli?.at != null && typeof cli.at === "number" ? Date.now() - cli.at : null;
+    const thrashFresh = !!cli?.tag && cli.tag !== "live" && ageMs != null && ageMs < 30000;
+    const hostFresh = !!cli?.host && ageMs != null && ageMs < 45000;
+    const lines2 = [];
+    if (hostFresh && cli?.host) {
+      lines2.push({ k: "host", v: String(cli.host), hi: true });
+    }
+    if (cli?.live) {
+      lines2.push({
+        k: "live",
+        v: String(cli.live),
+        hi: /combat|walk/i.test(String(cli.live))
+      });
+    }
+    if (thrashFresh && cli) {
+      lines2.push({ k: "tag", v: String(cli.tag), hi: true });
+      if (cli.phase && cli.phase !== cli.tag) {
+        lines2.push({ k: "phase", v: String(cli.phase) });
+      }
+      if (cli.action)
+        lines2.push({ k: "action", v: String(cli.action), hi: true });
+      if (cli.stage != null)
+        lines2.push({ k: "stage", v: String(cli.stage) });
+      if (cli.t != null)
+        lines2.push({ k: "tick", v: `t${cli.t}` });
+    } else if (cli?.tag && cli.tag !== "live") {
+      lines2.push({
+        k: "tag",
+        v: `${cli.tag} (stale)`,
+        hi: false
+      });
+      if (cli.action)
+        lines2.push({ k: "last", v: String(cli.action) });
+    } else if (running) {
+      lines2.push({
+        k: "driver",
+        v: `in-page script: ${scriptName ?? "?"}`,
+        hi: true
+      });
+    } else if (!cli?.live && !hostFresh) {
+      lines2.push({ k: "driver", v: "idle — launch CLI smoke" });
+    }
+    if (cli?.tile)
+      lines2.push({ k: "tile", v: String(cli.tile) });
+    if (cli?.free != null)
+      lines2.push({ k: "free", v: String(cli.free) });
+    if (cli?.inv)
+      lines2.push({ k: "inv", v: String(cli.inv) });
+    if (cli?.locs)
+      lines2.push({ k: "locs", v: String(cli.locs) });
+    if (cli?.detail)
+      lines2.push({ k: "detail", v: String(cli.detail) });
+    if (thrashFresh && ageMs != null) {
+      const stale = ageMs >= 15000;
+      lines2.push({
+        k: "age",
+        v: stale ? `${(ageMs / 1000).toFixed(0)}s (stale)` : `${(ageMs / 1000).toFixed(1)}s`,
+        hi: !stale
+      });
+    }
+    const key = lines2.map((l) => `${l.k}=${l.v}`).join("|");
+    if (key !== this.lastCliKey) {
+      this.lastCliKey = key;
+      this.cliBox.replaceChildren();
+      for (const { k, v, hi } of lines2) {
+        const r = el("div", "rs2b0t-cli-row");
+        const kk = el("span", "rs2b0t-cli-k");
+        kk.textContent = k;
+        const vv = el("span", hi ? "rs2b0t-cli-v rs2b0t-cli-v-hi" : "rs2b0t-cli-v");
+        vv.textContent = v;
+        vv.title = v;
+        r.appendChild(kk);
+        r.appendChild(vv);
+        this.cliBox.appendChild(r);
+      }
+    }
+    this.shotBtn.disabled = typeof globalThis.__harnessShot !== "function";
+    this.walkToBtn.textContent = isPanelWalkActive() ? "Stop walk" : "WalkTo…";
   }
   maybeThrashHeartbeat(now) {
     const a = abi3();
@@ -53505,34 +53872,47 @@ class HarnessPanel {
       return;
     let snap = null;
     try {
-      snap = typeof a.thrashSnap === "function" ? a.thrashSnap({ maxNpcs: 8, maxGround: 6, maxChat: 3 }) : null;
+      snap = typeof a.thrashSnap === "function" ? a.thrashSnap({ maxNpcs: 8, maxGround: 4, maxChat: 2, maxLocs: 8 }) : null;
     } catch {
       return;
     }
     if (!snap)
       return;
-    const tile = snap.tile ? `${snap.tile.x},${snap.tile.z}` : "—";
+    const tile = snap.tile ? `${snap.tile.x},${snap.tile.z}` + (snap.tile.level != null && snap.tile.level !== 0 ? ` L${snap.tile.level}` : "") : "—";
     const act = liveActivity(snap, a.reader);
     const has = snap.has ? Object.entries(snap.has).filter(([, v]) => v).map(([k]) => k).join(",") : "";
     const npcs = snap.npcNames ? Object.entries(snap.npcNames).slice(0, 6).map(([k, v]) => `${k}×${v}`).join(" ") : "";
+    const invArr = snap.inv ?? [];
+    const inv = invArr.length > 0 ? invArr.slice(0, 8).map((n) => String(n).replace(/\s+/g, " ").slice(0, 22)).join(" · ") + (invArr.length > 8 ? ` +${invArr.length - 8}` : "") : "∅";
+    const locArr = snap.locs ?? [];
+    const locs = locArr.length > 0 ? locArr.slice(0, 6).map((l) => {
+      const nm = l.name || `id${l.id ?? "?"}`;
+      return l.d != null ? `${nm}@${l.d}` : nm;
+    }).join(" · ") : "none";
     const free = snap.free != null ? `free=${snap.free}` : "";
-    const key = `${tile}|${act}|${has}|${npcs}|${free}`;
-    if (key === this.lastThrashKey && now - this.lastThrashAt < 4000)
+    const key = `${tile}|${act}|${has}|${npcs}|${free}|${inv}|${locs}`;
+    const quietStand = act === "standing" && key === this.lastThrashKey;
+    if (quietStand && now - this.lastThrashAt < 8000)
       return;
     this.lastThrashKey = key;
     this.lastThrashAt = now;
     const prev = a.cliResidual ?? {};
     const thrashFresh = !!prev.tag && prev.tag !== "live" && typeof prev.at === "number" && Date.now() - prev.at < 20000;
+    const hostFresh = !!prev.host && typeof prev.at === "number" && Date.now() - prev.at < 45000;
     a.cliResidual = {
       ...prev,
       action: thrashFresh && prev.action ? prev.action : act,
       live: act,
       tile,
       free: snap.free ?? null,
+      inv,
+      locs,
       detail: [has && `[${has}]`, npcs || null].filter(Boolean).join(" ") || prev.detail,
-      at: thrashFresh ? prev.at : Date.now()
+      at: thrashFresh || hostFresh ? prev.at : Date.now()
     };
-    LogBus.add("info", ["live", act, `@${tile}`, free, has && `[${has}]`, npcs || "npcs:none"].filter(Boolean).join(" "));
+    if (!quietStand && act !== "standing") {
+      LogBus.add("info", ["live", act, `@${tile}`, free, has && `[${has}]`, npcs || "npcs:none"].filter(Boolean).join(" "));
+    }
   }
   handleWalkToOpen() {
     if (isPanelWalkActive()) {
@@ -53598,13 +53978,6 @@ class HarnessPanel {
         title = "Panel WalkTo toy";
       }
     }
-    if (cls.includes("dim")) {
-      const last = getLastWalkToSelection();
-      if (last) {
-        text = `last ${last.label} (${last.x},${last.z})`;
-        title = "Last panel WalkTo selection";
-      }
-    }
     if (text !== this.lastWalkKey) {
       this.lastWalkKey = text;
       this.walkStatus.textContent = text;
@@ -53652,69 +54025,48 @@ class HarnessPanel {
     }
     this.stateCell.textContent = stateLabel;
     this.stateCell.className = stateClass;
-    const cli = a.cliResidual ?? null;
-    let snap = null;
     if (ingame && scene === 2) {
       try {
-        snap = typeof a.thrashSnap === "function" ? a.thrashSnap({ maxNpcs: 6, maxGround: 0, maxChat: 0 }) : null;
-      } catch {
-        snap = null;
-      }
-    }
-    const live = snap ? liveActivity(snap, r) : cli?.live || "—";
-    const thrashFresh = !!cli?.tag && cli.tag !== "live" && typeof cli.at === "number" && Date.now() - cli.at < 30000;
-    const actionText = thrashFresh && cli?.action ? String(cli.action) : live;
-    const actionKey = `${actionText}|${live}`;
-    if (actionKey !== this.lastActionKey) {
-      this.lastActionKey = actionKey;
-      this.actionCell.textContent = actionText;
-      this.actionCell.className = /combat|walk/i.test(actionText) ? "rs2b0t-value rs2b0t-state-running" : "rs2b0t-value";
-      this.actionCell.title = thrashFresh ? `thrash action (live=${live})` : "Live activity (combat / walk / standing)";
-    }
-    if (thrashFresh) {
-      const head = [
-        cli.tag,
-        cli.phase && cli.phase !== cli.tag ? cli.phase : null,
-        cli.stage != null ? `s${cli.stage}` : null,
-        cli.t != null ? `t${cli.t}` : null,
-        cli.free != null ? `free=${cli.free}` : null
-      ].filter(Boolean);
-      this.thrashCell.textContent = head.join(" · ");
-      this.thrashCell.className = "rs2b0t-value rs2b0t-state-running";
-      this.thrashCell.title = "Agent thrashPoint (smoke instrumentation)";
-      this.detailCell.textContent = cli.detail ? String(cli.detail) : cli.action ? String(cli.action) : "—";
-      this.detailCell.className = cli.detail || cli.action ? "rs2b0t-value" : "rs2b0t-value rs2b0t-dim";
-      this.detailCell.title = "thrash detail / pour / step action";
-    } else {
-      this.thrashCell.textContent = "—";
-      this.thrashCell.className = "rs2b0t-value rs2b0t-dim";
-      this.thrashCell.title = "No recent thrashPoint from CLI smoke";
-      this.detailCell.textContent = "—";
-      this.detailCell.className = "rs2b0t-value rs2b0t-dim";
+        const snap = typeof a.thrashSnap === "function" ? a.thrashSnap({ maxNpcs: 6, maxGround: 0, maxChat: 0 }) : null;
+        if (snap) {
+          const live = liveActivity(snap, r);
+          const prev = a.cliResidual ?? {};
+          a.cliResidual = { ...prev, live };
+        }
+      } catch {}
     }
     const tile = r.worldTile?.();
     this.tileCell.textContent = tile ? `${tile.x},${tile.z} (lv ${tile.level ?? 0})` : "—";
-    this.sceneCell.textContent = String(scene);
-    const mm = r.modalMessage?.();
-    const dlg = !!r.dialogOpen?.();
-    if (mm) {
-      this.dialogCell.textContent = `modal: ${mm.slice(0, 48)}`;
+    try {
+      const mm = r.modalMessage?.();
+      const dlg = !!r.dialogOpen?.();
+      if (mm) {
+        this.dialogCell.textContent = `modal: ${mm.slice(0, 48)}`;
+        this.dialogCell.className = "rs2b0t-value rs2b0t-state-paused";
+      } else if (dlg) {
+        this.dialogCell.textContent = "chat open";
+        this.dialogCell.className = "rs2b0t-value rs2b0t-state-paused";
+      } else {
+        this.dialogCell.textContent = "clear";
+        this.dialogCell.className = "rs2b0t-value";
+      }
+    } catch {
+      this.dialogCell.textContent = "err";
       this.dialogCell.className = "rs2b0t-value rs2b0t-state-paused";
-    } else if (dlg) {
-      this.dialogCell.textContent = "chat open";
-      this.dialogCell.className = "rs2b0t-value rs2b0t-state-paused";
-    } else {
-      this.dialogCell.textContent = "clear";
-      this.dialogCell.className = "rs2b0t-value";
     }
-    if (ingame) {
-      const energy = r.energy?.() ?? 0;
-      const weight = r.weight?.() ?? 0;
-      this.energyCell.textContent = `${energy}% · ${weight} kg`;
-      this.energyCell.className = `rs2b0t-value ${energy < 20 ? "rs2b0t-state-paused" : ""}`;
-    } else {
-      this.energyCell.textContent = "—";
-      this.energyCell.className = "rs2b0t-value rs2b0t-dim";
+    try {
+      if (ingame) {
+        const energy = r.energy?.() ?? 0;
+        const weight = r.weight?.() ?? 0;
+        this.energyCell.textContent = `${energy}% · ${weight} kg`;
+        this.energyCell.className = `rs2b0t-value ${energy < 20 ? "rs2b0t-state-paused" : ""}`;
+      } else {
+        this.energyCell.textContent = "—";
+        this.energyCell.className = "rs2b0t-value rs2b0t-dim";
+      }
+    } catch {
+      this.energyCell.textContent = "err";
+      this.energyCell.className = "rs2b0t-value rs2b0t-state-paused";
     }
   }
   renderStats() {
@@ -53845,8 +54197,8 @@ function wirePanelLogBridge() {
       LogBus.add(lv, String(msg));
     };
   }
-  const interesting = /\[thrash\]|\[quest-|\[harness\]|\[script|RESULT:|FAIL:|residual|stealGhost|mainlandAccount|temple oil|oil-on|Loar|pyre /i;
-  const noise = /377port\] scene complete|Requesting (animations|models|maps)|%:\s*Requesting|browser\.(log|info)/i;
+  const interesting = /\[thrash\]|\[quest-|\[harness\]|\[script|\[mm\]|\[mm-|\[reg|\[misc|\[myre|\[nav|\[slayer|\[farm|RESULT:|FAIL:|PASS|SOFT |product |useOn|use bar|useHeld|tele |scene|missingModels|OPLOCU|OPNPCU|residual|stealGhost|mainlandAccount|temple|oil-on|Loar|pyre |enchanted|greegree|firewall|Wall of flame/i;
+  const noise = /377port\] scene complete|Requesting (animations|models|maps)|%:\s*Requesting|browser\.(log|info)|DevTools|Download the React/i;
   const feed = (level, args) => {
     try {
       const msg = args.map((a) => {
@@ -53865,7 +54217,7 @@ function wirePanelLogBridge() {
         return;
       if (!interesting.test(msg) && level === "info")
         return;
-      const short = msg.length > 280 ? `${msg.slice(0, 277)}…` : msg;
+      const short = msg.length > 420 ? `${msg.slice(0, 417)}…` : msg;
       LogBus.add(level, short);
     } catch {}
   };
@@ -53950,4 +54302,4 @@ export {
   Client
 };
 
-//# debugId=23B748481945095464756E2164756E21
+//# debugId=338BD5A3FDC09ED364756E2164756E21

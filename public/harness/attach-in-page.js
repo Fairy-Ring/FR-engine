@@ -551,7 +551,8 @@ export function install(client, hooks = {}) {
               name = lt.name ?? null;
               ops = Array.isArray(lt.op) ? [...lt.op] : [];
             }
-            if (want && (!name || name.toLowerCase() !== want)) continue;
+            // Substring match (exact was dropping "Wall of flame" vs partial needles)
+            if (want && (!name || !name.toLowerCase().includes(want))) continue;
             const x = (client.mapBuildBaseX | 0) + lx;
             const z = (client.mapBuildBaseZ | 0) + lz;
             out.push({
@@ -780,6 +781,103 @@ export function install(client, hooks = {}) {
       return out;
     },
 
+    /**
+     * TYPE_INV slots under mainModal (slide puzzles, etc.).
+     * Ops from **ObjType.iop** (e.g. Move on reinit pieces), not component Make iop.
+     * Empty slots omitted (idPlusOne <= 0). Prefer findInvCom (same as inventory/bank).
+     */
+    mainModalInvItems() {
+      const main = client.mainModalId | 0;
+      if (main === -1) return [];
+      const out = [];
+      const pushFrom = (invCom, comIdHint) => {
+        if (!invCom) return;
+        // Decode always allocates linkObjType for TYPE_INV; treat missing as empty
+        const types = invCom.linkObjType;
+        const nums = invCom.linkObjNumber;
+        if (!types) return;
+        const comId = (invCom.id ?? comIdHint ?? main) | 0;
+        const len = types.length | 0;
+        for (let slot = 0; slot < len; slot++) {
+          const idPlusOne = types[slot] | 0;
+          if (idPlusOne <= 0) continue;
+          const objId = idPlusOne - 1;
+          const ot = objList(objId);
+          const ops = Array.isArray(ot?.iop) ? [...ot.iop] : Array.isArray(ot?.op) ? [...ot.op] : [];
+          out.push({
+            slot,
+            id: objId,
+            count: nums ? nums[slot] | 0 : 1,
+            name: ot?.name ?? null,
+            comId,
+            ops
+          });
+        }
+      };
+      // Prefer explicit known reinit inv com id, then findInvCom, then BFS
+      const REINIT_INV_COM = 19157; // reinitialisation_puzzle:com_3
+      const tryIds = [REINIT_INV_COM, main];
+      for (const id of tryIds) {
+        const com = ifGet(id);
+        if (com && (com.type === TYPE_INV || com.type === 2)) {
+          if (com.id == null) com.id = id;
+          pushFrom(com, id);
+          if (out.length) return out;
+        }
+      }
+      const invCom = findInvCom(main);
+      if (invCom) {
+        pushFrom(invCom, invCom.id);
+        if (out.length) return out;
+      }
+      const visit = comId => {
+        const com = ifGet(comId);
+        if (!com) return;
+        if (com.type === TYPE_INV || com.type === 2) {
+          if (com.id == null) com.id = comId;
+          pushFrom(com, comId);
+        }
+        const kids = com.children;
+        if (kids) for (let i = 0; i < kids.length; i++) visit(kids[i] | 0);
+      };
+      visit(main);
+      return out;
+    },
+
+    /** Debug: component tree under main modal (type, children, inv filled). */
+    mainModalTree() {
+      const main = client.mainModalId | 0;
+      if (main === -1) return { main: -1, nodes: [] };
+      const nodes = [];
+      const visit = (comId, depth) => {
+        if (depth > 6) return;
+        const com = ifGet(comId);
+        if (!com) {
+          nodes.push({ id: comId, miss: true, depth });
+          return;
+        }
+        const types = com.linkObjType;
+        let filled = 0;
+        if (types) for (let i = 0; i < types.length; i++) if ((types[i] | 0) > 0) filled++;
+        nodes.push({
+          id: comId,
+          depth,
+          type: com.type,
+          kids: com.children ? com.children.length : 0,
+          childIds: com.children ? [...com.children].slice(0, 12) : null,
+          linkLen: types ? types.length : 0,
+          filled
+        });
+        if (com.children) for (const c of com.children) visit(c | 0, depth + 1);
+      };
+      visit(main, 0);
+      // also probe reinit com ids even if not in children
+      for (let id = 19153; id <= 19158; id++) {
+        if (!nodes.some(n => n.id === id)) visit(id, 0);
+      }
+      return { main, nodes };
+    },
+
     /** Find IF button by visible text under a root (or main modal if root < 0). */
     buttonByText(rootComId, label) {
       const want = String(label).toLowerCase();
@@ -943,6 +1041,21 @@ export function install(client, hooks = {}) {
         chat: (reader.chat?.(maxChat) ?? []).map(l =>
           l?.username ? `${l.username}: ${l.text}` : String(l?.text ?? l ?? '')
         ),
+        // Nearby locs (temple firewall / pyre / doors) — panel CLI + thrash grepping
+        locs: (typeof reader.locs === 'function'
+          ? reader.locs({ maxDist: opts.maxLocDist ?? 14 })
+          : []
+        )
+          .slice(0, opts.maxLocs ?? 10)
+          .map(l => ({
+            name: l.name,
+            id: l.id,
+            d: l.distance,
+            lx: l.lx,
+            lz: l.lz,
+            x: l.x,
+            z: l.z
+          })),
         modals: reader.modals?.() ?? null,
         dialog: !!reader.dialogOpen?.(),
         modalMes: reader.modalMessage?.() || null,
@@ -1138,16 +1251,25 @@ export function install(client, hooks = {}) {
      * Prefer inv snap `{ id, slot, comId }` so dual-named objs (loaded vs empty vessel)
      * hit the correct slot — name-only invHas is first-match only.
      */
-    useHeldOnNpc(useNameOrSnap, npcName) {
+    useHeldOnNpc(useNameOrSnap, npcNameOrIndex) {
       const use =
         typeof useNameOrSnap === 'object' && useNameOrSnap && useNameOrSnap.id != null
           ? useNameOrSnap
           : reader.invHas(useNameOrSnap);
-      const n = reader.nearestNpc(npcName);
-      if (!use || !n) return false;
+      if (!use) return false;
+      let n = null;
+      if (typeof npcNameOrIndex === 'number' && Number.isFinite(npcNameOrIndex)) {
+        // Prefer exact index (multi Tyras guard at catapult)
+        const list = reader.npcs?.() ?? [];
+        n = list.find(x => (x.index | 0) === (npcNameOrIndex | 0)) || null;
+        if (!n) n = { index: npcNameOrIndex | 0 };
+      } else {
+        n = reader.nearestNpc(npcNameOrIndex);
+      }
+      if (!n || n.index == null) return false;
       const comId = (use.comId | 0) || 0;
       if (!actions.menuAction(USEHELD_START, use.id | 0, use.slot | 0, comId)) return false;
-      return actions.menuAction(USEHELD_ONNPC, n.index, 0, 0);
+      return actions.menuAction(USEHELD_ONNPC, n.index | 0, 0, 0);
     },
     ifButton(comId) {
       return actions.menuAction(IF_BUTTON, 0, 0, comId | 0);
