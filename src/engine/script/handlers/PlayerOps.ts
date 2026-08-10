@@ -1104,6 +1104,12 @@ const PlayerOps: CommandHandlers = {
     },
 
     [ScriptOpcode.AFK_EVENT]: state => {
+        // NODE_RANDOM_EVENTS=false → never fire macros (isolation thrash / debug only).
+        if (!Environment.NODE_RANDOM_EVENTS) {
+            state.activePlayer.afkEventReady = false;
+            state.pushInt(0);
+            return;
+        }
         state.pushInt((Environment.NODE_DEBUG || state.activePlayer.staffModLevel < 2) && state.activePlayer.afkEventReady ? 1 : 0);
         state.activePlayer.afkEventReady = false;
     },

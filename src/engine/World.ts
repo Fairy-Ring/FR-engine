@@ -601,7 +601,11 @@ class World {
                 player.playtime++;
 
                 if (this.currentTick % World.AFK_EVENTRATE === 0) {
-                    player.afkEventReady = Math.random() < (player.zonesAfk() ? World.AFK_CHANCE2 : World.AFK_CHANCE1);
+                    if (!Environment.NODE_RANDOM_EVENTS) {
+                        player.afkEventReady = false;
+                    } else {
+                        player.afkEventReady = Math.random() < (player.zonesAfk() ? World.AFK_CHANCE2 : World.AFK_CHANCE1);
+                    }
                 }
 
                 // - client input tracking
