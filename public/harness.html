@@ -68,13 +68,13 @@
       image-rendering: pixelated;
     }
 
-    /* ---- bot panel (rs2b0t names) ---- */
+    /* ---- harness panel (agent eyes) ---- */
 
     #bot-panel {
-      width: 330px;
-      flex: 0 0 330px;
+      width: 360px;
+      flex: 0 0 360px;
       height: 100vh;
-      /* Flex column: header fixed, log largest, inv/chat split rest */
+      /* cli + status fixed · stats + log share rest */
       display: flex;
       flex-direction: column;
       overflow: hidden;
@@ -109,40 +109,129 @@
       flex: 0 0 auto;
     }
 
-    /* Log takes the bulk of remaining height */
-    .rs2b0t-section-log {
-      flex: 2 1 0;
+    /* thrash row may wrap long agent tags */
+    .rs2b0t-row .rs2b0t-value {
+      white-space: normal;
+      word-break: break-word;
+      text-align: right;
+    }
+
+    /* Stats grid — expandable; collapsed by default */
+    .rs2b0t-section-stats {
+      flex: 1 1 0;
       display: flex;
       flex-direction: column;
-      min-height: 120px;
+      min-height: 140px;
       margin-bottom: 6px;
     }
 
-    .rs2b0t-section-log .rs2b0t-log {
+    .rs2b0t-section-stats.rs2b0t-stats-collapsed {
+      flex: 0 0 auto;
+      min-height: 0;
+    }
+
+    .rs2b0t-stats-toggle {
+      cursor: pointer;
+      user-select: none;
+      color: #9ab;
+    }
+
+    .rs2b0t-stats-toggle:hover {
+      color: #cde;
+    }
+
+    .rs2b0t-stats-body {
+      display: flex;
+      flex-direction: column;
       flex: 1 1 auto;
       min-height: 0;
-      height: auto; /* override fixed height */
     }
 
-    /* Bottom stack: inv + chat split leftover space evenly */
-    .rs2b0t-bottom {
-      flex: 1 1 0;
-      min-height: 0;
-      display: flex;
-      flex-direction: column;
-      gap: 6px;
+    .rs2b0t-stats-body[hidden] {
+      display: none !important;
     }
 
-    .rs2b0t-section-grow {
-      flex: 1 1 0;
+    .rs2b0t-stats-meta {
+      font-size: 10px;
+      color: #6a7a6a;
+      margin-bottom: 4px;
+      flex: 0 0 auto;
+    }
+
+    .rs2b0t-stats {
+      flex: 1 1 auto;
+      min-height: 0;
+      overflow-y: auto;
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 3px 6px;
+      align-content: start;
+      background: #0a0a0a;
+      border: 1px solid #2a2a2a;
+      border-radius: 4px;
+      padding: 6px;
+    }
+
+    .rs2b0t-stat {
+      display: grid;
+      grid-template-columns: 2.6em 3.2em 1fr;
+      gap: 4px;
+      align-items: baseline;
+      font-size: 11px;
+      line-height: 1.35;
+      padding: 1px 2px;
+      border-radius: 2px;
+    }
+
+    .rs2b0t-stat:hover {
+      background: #161616;
+    }
+
+    .rs2b0t-stat-name {
+      color: #888;
+      text-transform: uppercase;
+      font-size: 10px;
+    }
+
+    .rs2b0t-stat-lvl {
+      color: #ddd;
+      font-weight: 600;
+      text-align: right;
+    }
+
+    .rs2b0t-stat-dx {
+      text-align: right;
+      font-variant-numeric: tabular-nums;
+      min-width: 0;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .rs2b0t-stat-up {
+      color: #5be05b;
+    }
+
+    .rs2b0t-stat-down {
+      color: #ff7b7b;
+    }
+
+    .rs2b0t-stats-empty {
+      grid-column: 1 / -1;
+      color: #555;
+      font-size: 11px;
+      padding: 8px 4px;
+    }
+
+    /* Log shares remaining height with stats */
+    .rs2b0t-section-log {
+      flex: 1.2 1 0;
       display: flex;
       flex-direction: column;
-      min-height: 0;
+      min-height: 100px;
       margin-bottom: 0;
     }
 
-    .rs2b0t-section-grow .rs2b0t-inv,
-    .rs2b0t-section-grow .rs2b0t-chat {
+    .rs2b0t-section-log .rs2b0t-log {
       flex: 1 1 auto;
       min-height: 0;
       height: auto;
@@ -175,9 +264,10 @@
       color: #ddd;
       text-align: right;
       overflow: hidden;
-      text-overflow: ellipsis;
-      white-space: nowrap;
       min-width: 0;
+      /* wrap thrash/action (do not ellipsis-cut agent lines) */
+      white-space: normal;
+      word-break: break-word;
     }
 
     .rs2b0t-dim {
@@ -212,15 +302,6 @@
     .rs2b0t-button:disabled {
       color: #555;
       cursor: default;
-    }
-
-    .rs2b0t-current-script {
-      color: #7ad0ff;
-      font-size: 12px;
-      font-weight: bold;
-      overflow: hidden;
-      text-overflow: ellipsis;
-      white-space: nowrap;
     }
 
     /* ---- modals (rs2b0t ParamsModal / script-config shape) ---- */
@@ -350,8 +431,6 @@
       color: #e0d75b;
     }
 
-    .rs2b0t-inv,
-    .rs2b0t-chat,
     .rs2b0t-log {
       overflow-y: auto;
       background: #0a0a0a;
@@ -359,30 +438,6 @@
       border-radius: 3px;
       padding: 4px;
       font-size: 11px;
-    }
-
-    .rs2b0t-inv-line,
-    .rs2b0t-chat-line {
-      line-height: 1.45;
-      white-space: pre-wrap;
-      word-break: break-word;
-      color: #ccc;
-    }
-
-    .rs2b0t-chat-game {
-      color: #75a9a9;
-    }
-
-    .rs2b0t-chat-public {
-      color: #ddd;
-    }
-
-    .rs2b0t-chat-private {
-      color: #5be0e0;
-    }
-
-    .rs2b0t-log {
-      /* height comes from flex parent; keep a fallback if used alone */
       min-height: 80px;
     }
 

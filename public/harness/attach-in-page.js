@@ -13,6 +13,8 @@
  * @see rs2b0t docs/ARCHITECTURE.md
  */
 
+import { stopMidi } from '../../vendor/client-ts/src/3rdparty/tinymidipcm.js';
+
 // MiniMenuAction (377) — wire values from vendor/client-ts MiniMenuAction
 const OP_LOC = [625, 721, 743, 357, 1071]; // OP_LOC1..5
 const OP_NPC = [242, 209, 309, 852, 793]; // OP_NPC1..5
@@ -863,6 +865,89 @@ export function install(client, hooks = {}) {
         inv: reader.inventory().map(i => `${i.name ?? '?'}#${i.id}@${i.slot}`),
         worn: reader.equipment().map(i => i.name)
       };
+    },
+
+    /**
+     * Dense thrash datapoint — productive session telemetry (not a thin name list).
+     * Host logs as one JSON line per tick; greppable / NDJSON.
+     * @param {{ maxNpcs?: number, maxGround?: number, maxChat?: number, maxDist?: number }} [opts]
+     */
+    thrashSnap(opts = {}) {
+      const maxNpcs = opts.maxNpcs ?? 16;
+      const maxGround = opts.maxGround ?? 12;
+      const maxChat = opts.maxChat ?? 6;
+      const maxDist = opts.maxDist ?? 24;
+      const tile = reader.worldTile();
+      const inv = reader.inventory() ?? [];
+      const worn = reader.equipment() ?? [];
+      const hp = reader.hitpoints?.() ?? null;
+      const npcs = (reader.npcs() ?? [])
+        .filter(n => (n.distance ?? 999) <= maxDist)
+        .slice(0, maxNpcs)
+        .map(n => ({
+          name: n.name,
+          id: n.id,
+          d: n.distance,
+          wx: n.tile?.x,
+          wz: n.tile?.z,
+          combat: !!n.inCombat,
+          idx: n.index,
+          ops: (n.ops || []).filter(Boolean).slice(0, 5)
+        }));
+      const ground = (reader.groundItems?.({ maxDist }) ?? [])
+        .slice(0, maxGround)
+        .map(g => ({
+          name: g.name,
+          id: g.id,
+          d: g.distance,
+          wx: g.x ?? g.wx,
+          wz: g.z ?? g.wz,
+          n: g.count
+        }));
+      // Name histogram for "only Afflicted" vs "has Loar" at a glance
+      const npcNames = {};
+      for (const n of npcs) {
+        const k = n.name || '?';
+        npcNames[k] = (npcNames[k] || 0) + 1;
+      }
+      const invNames = inv.map(i => i?.name).filter(Boolean);
+      const free = 28 - inv.length;
+      return {
+        ts: Date.now(),
+        cycle: reader.loopCycle(),
+        ingame: reader.ingame(),
+        scene: reader.sceneState(),
+        tile,
+        moving: !!reader.playerMoving?.(),
+        combat: !!reader.inCombat?.(),
+        anim: reader.selfAnim?.() ?? -1,
+        energy: reader.energy?.() ?? null,
+        weight: reader.weight?.() ?? null,
+        hp: hp
+          ? { eff: hp.effective ?? hp.cur ?? null, base: hp.base ?? null }
+          : null,
+        free,
+        inv: invNames,
+        worn: worn.map(i => i?.name).filter(Boolean),
+        has: {
+          pyreLogs: invNames.some(n => /pyre logs/i.test(n)),
+          sacredOil: invNames.some(n => /sacred oil/i.test(n)),
+          olive: invNames.some(n => /olive oil/i.test(n)),
+          remains: invNames.some(n => /remain/i.test(n)),
+          tinder: invNames.some(n => /tinder/i.test(n)),
+          logs: invNames.some(n => /^logs$/i.test(n))
+        },
+        npcNames,
+        npcs,
+        ground,
+        chat: (reader.chat?.(maxChat) ?? []).map(l =>
+          l?.username ? `${l.username}: ${l.text}` : String(l?.text ?? l ?? '')
+        ),
+        modals: reader.modals?.() ?? null,
+        dialog: !!reader.dialogOpen?.(),
+        modalMes: reader.modalMessage?.() || null,
+        sideTab: reader.activeSideTab?.() ?? null
+      };
     }
   };
 
@@ -1240,6 +1325,72 @@ export function install(client, hooks = {}) {
       const code = OP_HELD[idx] ?? OP_HELD[0];
       return actions.menuAction(code, item.id, item.slot, item.comId);
     },
+    /**
+     * Remove one worn item (equipment side tab).
+     * Content: [inv_button1,wornitems:worn] → ~unequip — wire is **INV_BUTTON1**, not OP_HELD.
+     * (mid36 FAIL used OP_HELD / obj Wear iop — no server unequip.)
+     * menuAction(INV_BUTTON1, objId, slot, comId) ≡ Client INV_BUTTON packing.
+     */
+    unequip(nameSubstr) {
+      actions.setSideTab(4);
+      const want = String(nameSubstr).toLowerCase();
+      const list = reader.equipment() ?? [];
+      const item =
+        list.find(i => i?.name && String(i.name).toLowerCase() === want) ??
+        list.find(i => i?.name && String(i.name).toLowerCase().includes(want));
+      if (!item || item.id == null || item.slot == null || item.comId == null) return false;
+      // option1=Remove on wornitems inv → INV_BUTTON1
+      return actions.invButton(item.id | 0, item.slot | 0, item.comId | 0, 1);
+    },
+    /** Unequip every worn slot (up to passes). Returns names still worn. */
+    unequipAll(passes = 8) {
+      for (let p = 0; p < (passes | 0); p++) {
+        actions.setSideTab(4);
+        const list = reader.equipment() ?? [];
+        if (!list.length) return [];
+        for (const it of list) {
+          if (!it?.name) continue;
+          // INV_BUTTON Remove; one tick between so engine processes
+          actions.unequip(it.name);
+        }
+      }
+      actions.setSideTab(4);
+      const left = [];
+      for (const it of reader.equipment() ?? []) {
+        if (it?.name) left.push(it.name);
+      }
+      return left;
+    },
+    /**
+     * Eat food only when it mostly pays off (missing HP ≥ heal), or emergency low HP.
+     * Content: lobster `stat_heal,hitpoints,12,0` (consume_normal.dbrow).
+     * Avoids fight thrash that spams Eat every N ticks and dumps a full stack at ~full HP.
+     *
+     * @param {string} [nameSubstr='Lobster']
+     * @param {number} [heal=12] absolute heal amount for this food
+     * @param {{ minMissing?: number, floor?: number, op1based?: number }} [opts]
+     * @returns {{ ate: boolean, missing: number, effective: number, base: number, reason: string }}
+     */
+    eatIfNeeded(nameSubstr = 'Lobster', heal = 12, opts = {}) {
+      const h = Math.max(1, heal | 0);
+      const minMissing = opts.minMissing != null ? opts.minMissing | 0 : h;
+      const hp = reader.hitpoints?.() ?? { effective: 1, base: 1 };
+      const effective = (hp.effective | 0) || 0;
+      const base = (hp.base | 0) || 1;
+      const missing = Math.max(0, base - effective);
+      const floor =
+        opts.floor != null ? opts.floor | 0 : Math.max(8, Math.floor(base * 0.2));
+      let reason = 'full';
+      if (missing >= minMissing) reason = 'deficit';
+      else if (effective <= floor) reason = 'floor';
+      else {
+        return { ate: false, missing, effective, base, reason: 'skip' };
+      }
+      actions.setSideTab(3);
+      const op = opts.op1based != null ? opts.op1based | 0 : 1; // Eat = iop1 for lobster
+      const ate = !!actions.heldOp(nameSubstr, op);
+      return { ate, missing, effective, base, reason: ate ? reason : 'no-food' };
+    },
     closeModal() {
       const main = client.mainModalId | 0;
       if (main === -1) return false;
@@ -1332,11 +1483,67 @@ export function install(client, hooks = {}) {
       }
     },
     /**
-     * Soft logout for mainlandAccount relog (rs2b0t harness).
-     * Side icons / tutorial UI lock refresh only on next login payload.
+     * Soft-drop the game stream **without** Client.logout teardown.
+     * Keeps prepareGame chrome, player arrays, scene graph — the shape tryReconnect
+     * expects before opcode-18 resume (reply 15).
+     * @returns {boolean}
+     */
+    softDropStream() {
+      try {
+        if (client.stream && typeof client.stream.close === 'function') {
+          client.stream.close();
+        }
+        client.stream = null;
+        client.ingame = false;
+        // leave loginUser/loginPass, areaChat, players, world — reconnect seed
+        if (typeof client.loginRetryCount === 'number') client.loginRetryCount = 0;
+        // Kill title / last track — reconnect (reply 15) does not re-run mapzone music.
+        actions.clearMidiState('softDrop');
+        return true;
+      } catch (e) {
+        console.warn('[harness] softDropStream failed', e);
+        return false;
+      }
+    },
+    /**
+     * Stop tinymidipcm + clear Client midi bookkeeping so the next MIDI_SONG
+     * from the server is not blocked by nextMidiSong === songId (title scape_main).
+     */
+    clearMidiState(reason = '') {
+      try {
+        stopMidi(false);
+      } catch {
+        /* wasm may not be ready */
+      }
+      try {
+        client.midiSong = -1;
+        client.nextMidiSong = -1;
+        client.nextMusicDelay = 0;
+        client.midiFading = true;
+      } catch {
+        /* private dig failed */
+      }
+      if (reason) console.info('[harness] clearMidiState', reason);
+      return true;
+    },
+    /**
+     * Mid-session-shaped reconnect login (opcode 18). Call after softDropStream
+     * (or while already post-prepareGame). World may reply 15 and swap onto a ghost.
+     * @returns {boolean} dispatched
+     */
+    reconnectLogin(user, pass = 'test') {
+      return actions.login(user, pass, true);
+    },
+    /**
+     * Logout for mainlandAccount relog (harness / future bot test tools).
+     * Prefer IF_BUTTON on `logout:try_logout` (com 2458) → server p_logout (clean session).
+     * Socket-drop `client.logout()` alone is dirty: engine holds the player → long relog.
+     * Keep this in attach only — do not move into pure Client-TS.
      */
     logout() {
       try {
+        // Clean path first (same id as rs2b0t tools/lib/harness LOGOUT_BUTTON)
+        if (actions.ifButton(2458)) return true;
         if (typeof client.logout === 'function') {
           void client.logout();
           return true;
@@ -1430,10 +1637,18 @@ export function install(client, hooks = {}) {
     cheat: cmd => actions.cheat(cmd),
     menuAction: (a, b, c, d) => actions.menuAction(a, b, c, d),
     snapshot: () => reader.snapshot(),
+    /** Dense thrash telemetry (one JSON line host-side). */
+    thrashSnap: opts => reader.thrashSnap?.(opts) ?? reader.snapshot(),
     /** Injected login — prefer this over title clicks (rs2b0t). */
     login: (u, p, reconnect) => actions.login(u, p, reconnect),
     /** Soft logout for account-prep relog. */
-    logout: () => actions.logout()
+    logout: () => actions.logout(),
+    /** Drop stream only — keep game structure for reconnect (harness toy). */
+    softDropStream: () => actions.softDropStream(),
+    /** Opcode-18 login after softDrop / mid-session seed. */
+    reconnectLogin: (u, p) => actions.reconnectLogin(u, p),
+    /** Stop title/scape_main and clear midiSong bookkeeping. */
+    clearMidiState: reason => actions.clearMidiState(reason)
   };
 
   globalThis.__lc377 = abi;
