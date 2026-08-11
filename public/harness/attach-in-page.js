@@ -13,7 +13,8 @@
  * @see rs2b0t docs/ARCHITECTURE.md
  */
 
-import { stopMidi } from '../../vendor/client-ts/src/3rdparty/tinymidipcm.js';
+// Decision 012: Spessa + MidiFacade (not tinymidipcm)
+import { stopMidi } from '../../vendor/client-ts/src/sound/MidiFacade.js';
 
 // MiniMenuAction (377) — wire values from vendor/client-ts MiniMenuAction
 const OP_LOC = [625, 721, 743, 357, 1071]; // OP_LOC1..5
@@ -1628,14 +1629,14 @@ export function install(client, hooks = {}) {
       }
     },
     /**
-     * Stop tinymidipcm + clear Client midi bookkeeping so the next MIDI_SONG
-     * from the server is not blocked by nextMidiSong === songId (title scape_main).
+     * Stop MIDI (MidiFacade/Spessa) + clear Client midi bookkeeping so the next
+     * MIDI_SONG from the server is not blocked by nextMidiSong === songId (title scape_main).
      */
     clearMidiState(reason = '') {
       try {
         stopMidi(false);
       } catch {
-        /* wasm may not be ready */
+        /* backend may not be ready */
       }
       try {
         client.midiSong = -1;

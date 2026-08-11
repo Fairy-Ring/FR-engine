@@ -22,9 +22,11 @@ export function makeCrcs() {
         }
     }
 
+    // Must match Client.ts loadJagChecksums: ((hash << 1) + crc) | 0 each step (Java int32).
+    // Without |0, intermediate values can diverge from the client self-check → "checksum problem".
     let hash = 1234;
     for (let i = 0; i < 9; i++) {
-        hash = (hash << 1) + CrcTable[i];
+        hash = ((hash << 1) + (CrcTable[i] ?? 0)) | 0;
     }
     CrcBuffer.p4(hash);
 

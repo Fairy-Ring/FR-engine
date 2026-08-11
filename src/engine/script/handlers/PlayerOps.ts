@@ -393,8 +393,13 @@ const PlayerOps: CommandHandlers = {
         if (type < 0 || type >= 5) {
             throw new Error(`Invalid oploc: ${type + 1}`);
         }
+        // Do **not** require locType.op[type] to be a non-empty client string.
+        // Mining / heather / etc. use p_oploc(3) with op3=hidden — client packs that as
+        // null (menu must not show it), but the server still needs to re-queue OPLOC3.
+        // Client OpLocHandler still rejects null/hidden for real clicks.
         const locType: LocType = LocType.get(state.activeLoc.type);
-        if (!locType.op || !locType.op[type]) {
+        if (type === 0 && (!locType.op || !locType.op[0])) {
+            // No primary op at all — nothing to continue
             return;
         }
         state.activePlayer.stopAction();
