@@ -16,6 +16,7 @@ import DbRowType from '#/cache/config/DbRowType.js';
 import DbTableType from '#/cache/config/DbTableType.js';
 import EnumType from '#/cache/config/EnumType.js';
 import FontType from '#/cache/config/FontType.js';
+import Midi from '#/cache/midi/Midi.js';
 import HuntType from '#/cache/config/HuntType.js';
 import IdkType from '#/cache/config/IdkType.js';
 import InvType from '#/cache/config/InvType.js';
@@ -294,6 +295,7 @@ class World {
 
         FontType.load('data/pack');
         WordEnc.load('data/pack');
+        Midi.load();
 
         this.reload();
 
