@@ -205,6 +205,7 @@ export const enum ScriptOpcode {
     WEAKQUEUEVARARG,
     WEALTH_EVENT, // custom
     WEIGHT,
+    SETIDKCOLOUR, // official; appended so SETSKINCOLOUR keeps its 377 number
 
     // Npc ops (2500-2999)
     NPC_ADD = 2500, // official
@@ -256,6 +257,7 @@ export const enum ScriptOpcode {
     NPC_WALKTRIGGER, // official
     PROJANIM_NPC, // todo: take active_npc
     SPOTANIM_NPC,
+    NPC_DESTINATION, // official; appended so existing NPC_* numbers stay
 
     // Loc ops (3000-3499)
     LOC_ADD = 3000, // official
@@ -635,6 +637,7 @@ export const ScriptOpcodeMap: Map<string, number> = new Map([
     ['SETIDKIT', ScriptOpcode.SETIDKIT],
     ['SET_SKILL_LEVEL', ScriptOpcode.SET_SKILL_LEVEL],
     ['SETSKINCOLOUR', ScriptOpcode.SETSKINCOLOUR],
+    ['SETIDKCOLOUR', ScriptOpcode.SETIDKCOLOUR],
     ['SETTIMER', ScriptOpcode.SETTIMER],
     ['SOFTTIMER', ScriptOpcode.SOFTTIMER],
     ['SOUND_SYNTH', ScriptOpcode.SOUND_SYNTH],
@@ -720,6 +723,7 @@ export const ScriptOpcodeMap: Map<string, number> = new Map([
     ['NPC_WALK', ScriptOpcode.NPC_WALK],
     ['NPC_WALKTRIGGER', ScriptOpcode.NPC_WALKTRIGGER],
     ['SPOTANIM_NPC', ScriptOpcode.SPOTANIM_NPC],
+    ['NPC_DESTINATION', ScriptOpcode.NPC_DESTINATION],
 
     ['LOC_ADD', ScriptOpcode.LOC_ADD],
     ['LOC_ANGLE', ScriptOpcode.LOC_ANGLE],

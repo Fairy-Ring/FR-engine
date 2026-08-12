@@ -518,6 +518,9 @@ const ScriptOpcodePointers: {
     [ScriptOpcode.SETSKINCOLOUR]: {
         require: ['p_active_player']
     },
+    [ScriptOpcode.SETIDKCOLOUR]: {
+        require: ['p_active_player']
+    },
     [ScriptOpcode.P_ANIMPROTECT]: {
         require: ['p_active_player'],
         require2: ['p_active_player2']
@@ -745,6 +748,10 @@ const ScriptOpcodePointers: {
         require2: ['active_npc2']
     },
     [ScriptOpcode.NPC_INRANGE]: {
+        require: ['active_npc'],
+        require2: ['active_npc2']
+    },
+    [ScriptOpcode.NPC_DESTINATION]: {
         require: ['active_npc'],
         require2: ['active_npc2']
     },

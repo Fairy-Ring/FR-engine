@@ -1191,6 +1191,15 @@ const PlayerOps: CommandHandlers = {
         state.activePlayer.colors[4] = skin;
     },
 
+    // 274 PlayerOps SETIDKCOLOUR — slot into colors[] (0 hair, 1 torso, 2 legs, 3 boots, 4 skin)
+    [ScriptOpcode.SETIDKCOLOUR]: state => {
+        const [slot, color] = state.popInts(2);
+        if (slot > state.activePlayer.colors.length || slot < 0) {
+            throw new Error(`Invalid idk slot: ${slot}`);
+        }
+        state.activePlayer.colors[slot] = color;
+    },
+
     // https://x.com/JagexAsh/status/1791472651623370843
     [ScriptOpcode.P_OPPLAYERT]: checkedHandler(ProtectedActivePlayer, state => {
         const spellId = check(state.popInt(), NumberNotNull);

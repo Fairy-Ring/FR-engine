@@ -608,6 +608,15 @@ const NpcOps: CommandHandlers = {
     }),
     [ScriptOpcode.NPC_INRANGE]: checkedHandler(ActiveNpc, state => {
         state.pushInt(state.activeNpc.targetWithinMaxRange() ? 1 : 0);
+    }),
+
+    // 274 NpcOps NPC_DESTINATION — official; waypoints[0] is queued dest
+    [ScriptOpcode.NPC_DESTINATION]: checkedHandler(ActiveNpc, state => {
+        if (!state.activeNpc.hasWaypoints()) {
+            state.pushInt(state.activeNpc.coord);
+            return;
+        }
+        state.pushInt(state.activeNpc.waypoints[0]);
     })
 };
 
