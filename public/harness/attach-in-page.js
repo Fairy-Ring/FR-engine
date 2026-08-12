@@ -14,7 +14,7 @@
  */
 
 // Decision 012: Spessa + MidiFacade (not tinymidipcm)
-import { stopMidi } from '../../vendor/client-ts/src/sound/MidiFacade.js';
+import { stopMidi, debugMidi } from '../../vendor/client-ts/src/sound/MidiFacade.js';
 
 // MiniMenuAction (377) — wire values from vendor/client-ts MiniMenuAction
 const OP_LOC = [625, 721, 743, 357, 1071]; // OP_LOC1..5
@@ -1771,7 +1771,15 @@ export function install(client, hooks = {}) {
     /** Opcode-18 login after softDrop / mid-session seed. */
     reconnectLogin: (u, p) => actions.reconnectLogin(u, p),
     /** Stop title/scape_main and clear midiSong bookkeeping. */
-    clearMidiState: reason => actions.clearMidiState(reason)
+    clearMidiState: reason => actions.clearMidiState(reason),
+    /** MidiFacade fade/play snapshot (track-swap once-over). */
+    debugMidi: () => {
+      try {
+        return debugMidi();
+      } catch {
+        return { error: 'debugMidi failed' };
+      }
+    }
   };
 
   globalThis.__lc377 = abi;

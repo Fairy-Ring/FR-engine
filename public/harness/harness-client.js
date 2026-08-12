@@ -38283,6 +38283,40 @@ class SpessaBackend {
   playing = false;
   soundfontLoaded = false;
   midivol = 96;
+  unlockInstalled = false;
+  playGen = 0;
+  async tryResume(maxWaitMs = 80) {
+    if (!this.ctx || this.ctx.state !== "suspended") {
+      return;
+    }
+    try {
+      await Promise.race([
+        this.ctx.resume().catch(() => {}),
+        new Promise((r) => setTimeout(r, maxWaitMs))
+      ]);
+    } catch {}
+  }
+  installUnlock() {
+    if (this.unlockInstalled || !this.ctx) {
+      return;
+    }
+    this.unlockInstalled = true;
+    const ctx = this.ctx;
+    const kick = () => {
+      if (ctx.state === "suspended") {
+        ctx.resume().catch(() => {});
+      }
+    };
+    for (const ev of ["pointerdown", "keydown", "touchstart", "mousedown"]) {
+      window.addEventListener(ev, kick, { capture: true, passive: true });
+    }
+    document.addEventListener("visibilitychange", () => {
+      if (document.visibilityState === "visible") {
+        kick();
+      }
+    });
+    window.addEventListener("focus", kick);
+  }
   async ensure() {
     if (this.ready && this.synth && this.seq) {
       return;
@@ -38292,9 +38326,8 @@ class SpessaBackend {
       window.audioContext = new window.AudioContext({ sampleRate: 22050 });
     }
     this.ctx = window.audioContext;
-    if (this.ctx.state === "suspended") {
-      await this.ctx.resume().catch(() => {});
-    }
+    this.installUnlock();
+    await this.tryResume(80);
     await this.ctx.audioWorklet.addModule(PROCESSOR_URL);
     this.gainNode = this.ctx.createGain();
     this.gainNode.gain.value = midivolToGain(this.midivol);
@@ -38337,9 +38370,8 @@ class SpessaBackend {
     if (!this.soundfontLoaded) {
       throw new Error("[midi:spessa] setSoundfont before play");
     }
-    if (this.ctx.state === "suspended") {
-      await this.ctx.resume().catch(() => {});
-    }
+    await this.tryResume(80);
+    const gen = ++this.playGen;
     this.stop();
     const ab = this.copyToArrayBuffer(smf);
     await new Promise((resolve, reject) => {
@@ -38356,7 +38388,7 @@ class SpessaBackend {
       const timer = setTimeout(() => {
         cleanup();
         reject(new Error("[midi:spessa] loadNewSongList timed out"));
-      }, 15000);
+      }, 4000);
       this.seq.eventHandler.addEvent("songChange", tid, () => {
         clearTimeout(timer);
         cleanup();
@@ -38375,12 +38407,16 @@ class SpessaBackend {
         reject(e);
       }
     });
+    if (gen !== this.playGen) {
+      return;
+    }
     this.seq.loopCount = loop ? -1 : 0;
-    this.applyMasterGain();
+    try {
+      this.seq.currentTime = 0;
+    } catch {}
     this.seq.play();
     this.playing = true;
-    this.applyMasterGain();
-    console.info(`[midi:spessa] play smf=${smf.byteLength}B loop=${loop} duration=${(this.seq.duration ?? 0).toFixed(2)}s midivol=${this.midivol} gain=${midivolToGain(this.midivol).toFixed(3)}`);
+    console.info(`[midi:spessa] play smf=${smf.byteLength}B loop=${loop} duration=${(this.seq.duration ?? 0).toFixed(2)}s midivol=${this.midivol} gain=${midivolToGain(this.midivol).toFixed(3)} t=${(this.seq.currentTime ?? 0).toFixed(2)}`);
   }
   stop() {
     if (!this.seq) {
@@ -38388,9 +38424,6 @@ class SpessaBackend {
     }
     try {
       this.seq.pause();
-      if (this.seq.duration > 0) {
-        this.seq.currentTime = this.seq.duration;
-      }
     } catch {}
     try {
       this.synth?.stopAll(true);
@@ -38475,9 +38508,10 @@ function signlinkPlayMidi() {
     const onErr = (e) => console.warn("[midi] play failed", e);
     if (midifade !== 0 && midiFadingIn) {
       midiFadingOut = false;
-      midiFadeVol = 0;
-      applyMidivol(0);
-      backend.play(mid, loop).catch(onErr);
+      applyMidivol(midiFadeVol);
+      backend.play(mid, loop).then(() => {
+        applyMidivol(midiFadingIn ? midiFadeVol : midivol);
+      }).catch(onErr);
     } else {
       applyMidivol(midivol);
       backend.play(mid, loop).then(() => applyMidivol(midivol)).catch(onErr);
@@ -38508,6 +38542,7 @@ function audioLoop() {
     if (midiFadeVol === 0) {
       midiFadingOut = false;
       midiFadingIn = true;
+      midiFadeVol = 0;
     }
   }
   if (midiCmd !== "none") {
@@ -38618,6 +38653,19 @@ function stopMidi(_fade) {
     return;
   }
   stopMidiStock();
+}
+function debugMidi() {
+  return {
+    ready,
+    midiCmd,
+    midifade,
+    midivol,
+    midiFadeVol,
+    midiFadingIn,
+    midiFadingOut,
+    pending: pendingMidi?.length ?? 0,
+    playing: backend?.isPlaying() ?? false
+  };
 }
 ensureInit();
 
@@ -64918,7 +64966,14 @@ function install(client, hooks = {}) {
     logout: () => actions.logout(),
     softDropStream: () => actions.softDropStream(),
     reconnectLogin: (u, p) => actions.reconnectLogin(u, p),
-    clearMidiState: (reason) => actions.clearMidiState(reason)
+    clearMidiState: (reason) => actions.clearMidiState(reason),
+    debugMidi: () => {
+      try {
+        return debugMidi();
+      } catch {
+        return { error: "debugMidi failed" };
+      }
+    }
   };
   globalThis.__lc377 = abi;
   console.info("[harness] adapter attached { reader, actions } (hooks pattern; not a client fork)");
@@ -72707,4 +72762,4 @@ export {
   Client
 };
 
-//# debugId=C90693B89AFE0AA664756E2164756E21
+//# debugId=9E827DB9B18FD63064756E2164756E21
