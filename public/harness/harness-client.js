@@ -46640,8 +46640,8 @@ class MouseTracking {
 // vendor/client-ts/src/client/Skill.ts
 class Skill {
   static count = 25;
-  static names = ["attack", "defence", "strength", "hitpoints", "ranged", "prayer", "magic", "cooking", "woodcutting", "fletching", "fishing", "firemaking", "crafting", "smithing", "mining", "herblore", "agility", "thieving", "slayer", "-unused-", "runecraft", "-unused-", "-unused-", "-unused-", "-unused-"];
-  static used = [true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, false, false, true, false, false, false, false];
+  static names = ["attack", "defence", "strength", "hitpoints", "ranged", "prayer", "magic", "cooking", "woodcutting", "fletching", "fishing", "firemaking", "crafting", "smithing", "mining", "herblore", "agility", "thieving", "slayer", "farming", "runecraft", "yodelling", "hexediting", "-unused-", "-unused-"];
+  static used = [true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, false, false, false, false];
 }
 
 // vendor/client-ts/src/client/TitleFlames.ts
@@ -63432,8 +63432,12 @@ var SKILL_NAMES = [
   "agility",
   "thieving",
   "slayer",
+  "farming",
+  "runecraft",
+  "yodelling",
+  "hexediting",
   "-unused-",
-  "runecraft"
+  "-unused-"
 ];
 function applyOutpostCollisionLivePatch(client) {
   if (!client)
@@ -63750,7 +63754,8 @@ function install(client, hooks = {}) {
     modals: () => ({
       main: client.mainModalId ?? -1,
       side: client.sideModalId ?? -1,
-      chat: client.chatModalId ?? -1
+      chat: client.chatModalId ?? -1,
+      overlay: client.mainOverlayId ?? client.viewportOverlayInterfaceId ?? -1
     }),
     activeSideTab: () => client.activeIcon | 0,
     sideTabInterface: (tab) => client.sideIcon?.[tab] ?? -1,
@@ -64153,7 +64158,7 @@ function install(client, hooks = {}) {
           });
         }
       };
-      const REINIT_INV_COM = 19157;
+      const REINIT_INV_COM = 11129;
       const tryIds = [REINIT_INV_COM, main];
       for (const id of tryIds) {
         const com = ifGet(id);
@@ -64222,7 +64227,7 @@ function install(client, hooks = {}) {
             visit(c | 0, depth + 1);
       };
       visit(main, 0);
-      for (let id = 19153;id <= 19158; id++) {
+      for (let id = 11126;id <= 11131; id++) {
         if (!nodes.some((n) => n.id === id))
           visit(id, 0);
       }
@@ -72798,4 +72803,4 @@ export {
   Client
 };
 
-//# debugId=47091D699BE5BC1B64756E2164756E21
+//# debugId=9D58FE52AACC329364756E2164756E21

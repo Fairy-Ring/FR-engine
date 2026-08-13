@@ -48,12 +48,12 @@ const VARP_TUTORIAL = 281; // may not be reliable — prefer inv/skills/tile for
 const DESIGN_MODAL = 3559;
 const DESIGN_ACCEPT = 3651;
 
-/** Skill.names order (Client Skill.ts) for stat snapshots */
+/** Skill.names order — 1:1 Client-Java 377 Stats.field1504 */
 const SKILL_NAMES = [
   'attack', 'defence', 'strength', 'hitpoints', 'ranged', 'prayer', 'magic',
   'cooking', 'woodcutting', 'fletching', 'fishing', 'firemaking', 'crafting',
-  'smithing', 'mining', 'herblore', 'agility', 'thieving', 'slayer', '-unused-',
-  'runecraft'
+  'smithing', 'mining', 'herblore', 'agility', 'thieving', 'slayer', 'farming',
+  'runecraft', 'yodelling', 'hexediting', '-unused-', '-unused-'
 ];
 
 /**
@@ -416,7 +416,8 @@ export function install(client, hooks = {}) {
     modals: () => ({
       main: client.mainModalId ?? -1,
       side: client.sideModalId ?? -1,
-      chat: client.chatModalId ?? -1
+      chat: client.chatModalId ?? -1,
+      overlay: client.mainOverlayId ?? client.viewportOverlayInterfaceId ?? -1
     }),
     activeSideTab: () => client.activeIcon | 0,
     sideTabInterface: tab => client.sideIcon?.[tab] ?? -1,
@@ -845,7 +846,7 @@ export function install(client, hooks = {}) {
         }
       };
       // Prefer explicit known reinit inv com id, then findInvCom, then BFS
-      const REINIT_INV_COM = 19157; // reinitialisation_puzzle:com_3
+      const REINIT_INV_COM = 11129; // reinitialisation_puzzle:com_3 (cache 11126+)
       const tryIds = [REINIT_INV_COM, main];
       for (const id of tryIds) {
         const com = ifGet(id);
@@ -902,7 +903,7 @@ export function install(client, hooks = {}) {
       };
       visit(main, 0);
       // also probe reinit com ids even if not in children
-      for (let id = 19153; id <= 19158; id++) {
+      for (let id = 11126; id <= 11131; id++) {
         if (!nodes.some(n => n.id === id)) visit(id, 0);
       }
       return { main, nodes };
