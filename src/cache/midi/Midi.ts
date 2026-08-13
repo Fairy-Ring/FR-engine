@@ -261,6 +261,33 @@ function unwrapRiffMidi(data: Uint8Array): Uint8Array | null {
     return null;
 }
 
+/** Leftover pack debugname (`midi_401`). 377 idx3 has 16 empty leftover slots; they are not named songs. */
+function isLeftoverMidiDebugname(name: string | undefined): boolean {
+    return !name || /^midi_\d+$/i.test(name);
+}
+
+function readMidiPackNames(): Map<number, string> {
+    const packPath = path.join(Environment.BUILD_SRC_DIR, 'pack/midi.pack');
+    const names = new Map<number, string>();
+    if (!fs.existsSync(packPath)) {
+        return names;
+    }
+
+    for (const line of fs.readFileSync(packPath, 'utf8').split(/\r?\n/)) {
+        const eq = line.indexOf('=');
+        if (eq < 0) {
+            continue;
+        }
+        const id = Number(line.slice(0, eq));
+        const name = line.slice(eq + 1).trim();
+        if (!Number.isFinite(id) || !name) {
+            continue;
+        }
+        names.set(id, name);
+    }
+    return names;
+}
+
 export default class Midi {
     static lengths: number[] = [];
 
@@ -268,17 +295,25 @@ export default class Midi {
         const count = OnDemand.cache.count(3);
         if (count) {
             this.lengths = new Array(count).fill(0);
+            const names = readMidiPackNames();
 
             for (let i = 0; i < count; i++) {
                 const data = OnDemand.cache.read(3, i, true);
+                const name = names.get(i);
                 if (!data) {
-                    printWarning(`Missing midi id=${i}`);
+                    // Leftover unnamed idx3 holes (`midi_N`) are expected on 377/410.
+                    // WARN only if a *named* pack row is empty (real missing song).
+                    if (name && !isLeftoverMidiDebugname(name)) {
+                        printWarning(`Missing midi id=${i} (${name})`);
+                    }
                     continue;
                 }
 
                 const length = parseMidiLength(data);
                 if (!length) {
-                    printWarning(`Failed to parse midi id=${i}`);
+                    if (name && !isLeftoverMidiDebugname(name)) {
+                        printWarning(`Failed to parse midi id=${i} (${name})`);
+                    }
                     continue;
                 }
 
@@ -293,26 +328,14 @@ export default class Midi {
     }
 
     private static loadFromSourceTree(): void {
-        const packPath = path.join(Environment.BUILD_SRC_DIR, 'pack/midi.pack');
-        if (!fs.existsSync(packPath)) {
+        const names = readMidiPackNames();
+        if (names.size === 0) {
             printWarning('No MIDI data in cache and midi.pack missing.');
             return;
         }
 
-        const lines = fs.readFileSync(packPath, 'utf8').split(/\r?\n/);
         let maxId = -1;
-        const names = new Map<number, string>();
-        for (const line of lines) {
-            const eq = line.indexOf('=');
-            if (eq < 0) {
-                continue;
-            }
-            const id = Number(line.slice(0, eq));
-            const name = line.slice(eq + 1).trim();
-            if (!Number.isFinite(id) || !name) {
-                continue;
-            }
-            names.set(id, name);
+        for (const id of names.keys()) {
             if (id > maxId) {
                 maxId = id;
             }
@@ -331,11 +354,16 @@ export default class Midi {
                 }
             }
             if (!data || data.length === 0) {
+                if (!isLeftoverMidiDebugname(name)) {
+                    printWarning(`Missing midi source ${name} (id=${id})`);
+                }
                 continue;
             }
             const length = parseMidiLength(data);
             if (length) {
                 this.lengths[id] = length;
+            } else if (!isLeftoverMidiDebugname(name)) {
+                printWarning(`Failed to parse midi source ${name} (id=${id})`);
             }
         }
     }
