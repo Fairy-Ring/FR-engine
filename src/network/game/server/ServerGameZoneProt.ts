@@ -2,7 +2,7 @@ import ServerGameProt from '#/network/game/server/ServerGameProt.js';
 
 export default class ServerGameZoneProt extends ServerGameProt {
     // zone protocol
-    static readonly LOC_MERGE = new ServerGameZoneProt(203, 14); // todo: rename to P_LOCMERGE
+    static readonly LOC_MERGE = new ServerGameZoneProt(203, 14); // script opcode is P_LOCMERGE — two namespaces (Decision 013)
     static readonly LOC_ANIM = new ServerGameZoneProt(142, 4);
     static readonly OBJ_DEL = new ServerGameZoneProt(208, 3);
     static readonly OBJ_REVEAL = new ServerGameZoneProt(106, 7);

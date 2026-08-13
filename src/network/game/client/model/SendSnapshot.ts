@@ -2,21 +2,21 @@ import ClientGameProtCategory from '#/network/game/client/ClientGameProtCategory
 import ClientGameMessage from '#/network/game/client/ClientGameMessage.js';
 
 export const enum ReportAbuseReason {
-    OFFENSIVE_LANGUAGE,  // 0
-    ITEM_SCAMMING,  // 1
-    PASSWORD_SCAMMING,  // 2
-    BUG_ABUSE,  // 3
-    STAFF_IMPERSONATION,  // 4
-    ACCOUNT_SHARING,  // 5
-    MACROING,  // 6
-    MULTI_LOGGING,  // 7
-    ENCOURAGING_BREAK_RULES,  // 8
-    MISUSE_CUSTOMER_SUPPORT,  // 9
-    ADVERTISING_WEBSITE,  // 10
-    REAL_WORLD_TRADING  // 11
+    OFFENSIVE_LANGUAGE, // 0
+    ITEM_SCAMMING, // 1
+    PASSWORD_SCAMMING, // 2
+    BUG_ABUSE, // 3
+    STAFF_IMPERSONATION, // 4
+    ACCOUNT_SHARING, // 5
+    MACROING, // 6
+    MULTI_LOGGING, // 7
+    ENCOURAGING_BREAK_RULES, // 8
+    MISUSE_CUSTOMER_SUPPORT, // 9
+    ADVERTISING_WEBSITE, // 10
+    REAL_WORLD_TRADING // 11
 }
 
-export default class ReportAbuse extends ClientGameMessage {
+export default class SendSnapshot extends ClientGameMessage {
     category = ClientGameProtCategory.USER_EVENT;
 
     constructor(

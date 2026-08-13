@@ -63,7 +63,7 @@ import { WorldStat } from '#/engine/WorldStat.js';
 import Zone from '#/engine/zone/Zone.js';
 import Isaac from '#/io/Isaac.js';
 import Packet from '#/io/Packet.js';
-import { ReportAbuseReason } from '#/network/game/client/model/ReportAbuse.js';
+import { ReportAbuseReason } from '#/network/game/client/model/SendSnapshot.js';
 import MessagePrivate from '#/network/game/server/model/MessagePrivate.js';
 import UpdateFriendList from '#/network/game/server/model/UpdateFriendList.js';
 import UpdateIgnoreList from '#/network/game/server/model/UpdateIgnoreList.js';
