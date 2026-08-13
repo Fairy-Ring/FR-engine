@@ -63402,6 +63402,7 @@ var PAUSE_BUTTON = 997;
 var INV_BUTTON = [582, 113, 555, 331, 354];
 var TUT_CLICKSIDE = 119;
 var CLIENT_CHEAT = 56;
+var RESUME_P_COUNTDIALOG = 75;
 var BUTTON_OK = 1;
 var BUTTON_CONTINUE = 6;
 var BUTTON_TARGET = 2;
@@ -63915,7 +63916,9 @@ function install(client, hooks = {}) {
       if (!local)
         return null;
       const hits = reader.locs({ maxDist: 50 }).filter((l) => l.lx === local.lx && l.lz === local.lz);
-      return hits[0] ?? null;
+      const dressing = new Set([174, 175, 1629, 1630]);
+      const hasOp = (l) => !dressing.has(l.id | 0) && (l.ops || []).some((o) => o && String(o).trim() && String(o) !== "hidden");
+      return hits.find(hasOp) ?? null;
     },
     modalMessage() {
       const m = client.tutComMessage;
@@ -64060,6 +64063,26 @@ function install(client, hooks = {}) {
     invHas(nameSubstr) {
       const want = String(nameSubstr).toLowerCase();
       return reader.inventory().find((i3) => i3.name && i3.name.toLowerCase().includes(want)) ?? null;
+    },
+    ifInv(comId) {
+      const com = ifGet(comId | 0);
+      if (!com?.linkObjType)
+        return [];
+      const out = [];
+      for (let i3 = 0;i3 < com.linkObjType.length; i3++) {
+        const idPlusOne = com.linkObjType[i3] | 0;
+        if (idPlusOne <= 0)
+          continue;
+        const id = idPlusOne - 1;
+        const ot = objList(id);
+        out.push({
+          slot: i3,
+          id,
+          count: com.linkObjNumber?.[i3] | 0,
+          name: ot?.name ?? null
+        });
+      }
+      return out;
     },
     mainSkillMultiItems() {
       const main = client.mainModalId | 0;
@@ -64821,6 +64844,17 @@ function install(client, hooks = {}) {
       client.out.pjstr(body);
       return true;
     },
+    resumeCountDialog(value) {
+      if (!client.ingame || !client.out)
+        return false;
+      const n = Number(value) | 0;
+      client.out.p1Enc(RESUME_P_COUNTDIALOG);
+      client.out.p4(n);
+      client.chatbackInputOpen = 0;
+      client.dialogInputOpen = false;
+      client.redrawChat = true;
+      return true;
+    },
     login(user, pass = "test", reconnect = false) {
       const u = String(user ?? "").slice(0, 12);
       const p = String(pass ?? "test").slice(0, 20);
@@ -64955,10 +64989,12 @@ function install(client, hooks = {}) {
     loginMes: () => reader.loginMes(),
     loginscreen: () => reader.loginscreen(),
     varp: (id) => reader.varp(id),
+    ifInv: (id) => reader.ifInv(id),
     worldTile: () => reader.worldTile(),
     walkTo: (lx, lz) => actions.walkTo(lx, lz),
     walkRel: (dx, dz) => actions.walkRel(dx, dz),
     cheat: (cmd) => actions.cheat(cmd),
+    resumeCountDialog: (n) => actions.resumeCountDialog(n),
     menuAction: (a2, b, c, d) => actions.menuAction(a2, b, c, d),
     snapshot: () => reader.snapshot(),
     thrashSnap: (opts) => reader.thrashSnap?.(opts) ?? reader.snapshot(),
@@ -72762,4 +72798,4 @@ export {
   Client
 };
 
-//# debugId=9E827DB9B18FD63064756E2164756E21
+//# debugId=47091D699BE5BC1B64756E2164756E21

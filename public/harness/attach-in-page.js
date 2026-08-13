@@ -36,6 +36,8 @@ const INV_BUTTON = [582, 113, 555, 331, 354]; // INV_BUTTON1..5
 const TUT_CLICKSIDE = 119;
 
 const CLIENT_CHEAT = 56;
+/** ClientProt.RESUME_P_COUNTDIALOG — p_countdialog / last_int */
+const RESUME_P_COUNTDIALOG = 75;
 const BUTTON_OK = 1;
 const BUTTON_CONTINUE = 6;
 const BUTTON_TARGET = 2;
@@ -583,7 +585,15 @@ export function install(client, hooks = {}) {
       const local = reader.toLocal(wx, wz);
       if (!local) return null;
       const hits = reader.locs({ maxDist: 50 }).filter(l => l.lx === local.lx && l.lz === local.lz);
-      return hits[0] ?? null;
+      // Prefer a loc that actually has a player op. First-hit was rubble_1 (no
+      // ops) on 3510,3317 → forged OPLOC3 → "No trigger for [oploc3,rubble_1]".
+      const dressing = new Set([174, 175, 1629, 1630]);
+      const hasOp = l =>
+        !dressing.has(l.id | 0) &&
+        (l.ops || []).some(o => o && String(o).trim() && String(o) !== 'hidden');
+      // Do not fall back to rubble_1 / crumblywall — those have no trigger.
+      // Prod (NODE_PRODUCTION) would drop the packet; debug prints No trigger.
+      return hits.find(hasOp) ?? null;
     },
 
     /**
@@ -738,6 +748,25 @@ export function install(client, hooks = {}) {
     invHas(nameSubstr) {
       const want = String(nameSubstr).toLowerCase();
       return reader.inventory().find(i => i.name && i.name.toLowerCase().includes(want)) ?? null;
+    },
+    /** Interface inv by packed com id (e.g. shop_template:inv 3900). */
+    ifInv(comId) {
+      const com = ifGet(comId | 0);
+      if (!com?.linkObjType) return [];
+      const out = [];
+      for (let i = 0; i < com.linkObjType.length; i++) {
+        const idPlusOne = com.linkObjType[i] | 0;
+        if (idPlusOne <= 0) continue;
+        const id = idPlusOne - 1;
+        const ot = objList(id);
+        out.push({
+          slot: i,
+          id,
+          count: com.linkObjNumber?.[i] | 0,
+          name: ot?.name ?? null
+        });
+      }
+      return out;
     },
 
     /**
@@ -1585,6 +1614,17 @@ export function install(client, hooks = {}) {
       client.out.pjstr(body);
       return true;
     },
+    /** Product p_countdialog resume (Java Enter on amount). */
+    resumeCountDialog(value) {
+      if (!client.ingame || !client.out) return false;
+      const n = Number(value) | 0;
+      client.out.p1Enc(RESUME_P_COUNTDIALOG);
+      client.out.p4(n);
+      client.chatbackInputOpen = 0;
+      client.dialogInputOpen = false;
+      client.redrawChat = true;
+      return true;
+    },
     /**
      * Injected title login (rs2b0t tools/lib/harness.ts).
      * Sets loginUser/loginPass and calls Client.login — no canvas typing.
@@ -1754,10 +1794,12 @@ export function install(client, hooks = {}) {
     loginMes: () => reader.loginMes(),
     loginscreen: () => reader.loginscreen(),
     varp: id => reader.varp(id),
+    ifInv: id => reader.ifInv(id),
     worldTile: () => reader.worldTile(),
     walkTo: (lx, lz) => actions.walkTo(lx, lz),
     walkRel: (dx, dz) => actions.walkRel(dx, dz),
     cheat: cmd => actions.cheat(cmd),
+    resumeCountDialog: n => actions.resumeCountDialog(n),
     menuAction: (a, b, c, d) => actions.menuAction(a, b, c, d),
     snapshot: () => reader.snapshot(),
     /** Dense thrash telemetry (one JSON line host-side). */
