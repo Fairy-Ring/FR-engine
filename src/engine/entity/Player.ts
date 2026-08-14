@@ -1,7 +1,5 @@
-import 'dotenv/config';
-
-import { PlayerInfoProt, Visibility } from '@2004scape/rsbuf';
-import { CollisionType, CollisionFlag } from '@2004scape/rsmod-pathfinder';
+import { PlayerInfoProt, Visibility } from '#/network/rsbuf/index.js';
+import { CollisionFlag, CollisionType } from '#/engine/routefinder/index.js';
 
 import Component from '#/cache/config/Component.js';
 import FontType from '#/cache/config/FontType.js';
@@ -24,7 +22,6 @@ import { EntityTimer, PlayerTimerType } from '#/engine/entity/EntityTimer.js';
 import HeroPoints from '#/engine/entity/HeroPoints.js';
 import Loc from '#/engine/entity/Loc.js';
 import { ModalState } from '#/engine/entity/ModalState.js';
-import { MoveRestrict } from '#/engine/entity/MoveRestrict.js';
 import { MoveSpeed } from '#/engine/entity/MoveSpeed.js';
 import { MoveStrategy } from '#/engine/entity/MoveStrategy.js';
 import { isClientConnected } from '#/engine/entity/NetworkPlayer.js';
@@ -36,7 +33,7 @@ import { PlayerQueueRequest, PlayerQueueType, QueueType, ScriptArgument } from '
 import { PlayerStat, PlayerStatEnabled, PlayerStatFree, PlayerStatNameMap } from '#/engine/entity/PlayerStat.js';
 import InputTracking from '#/engine/entity/tracking/InputTracking.js';
 import { WealthEventParams } from '#/engine/entity/tracking/WealthEvent.js';
-import { changeNpcCollision, changePlayerCollision, findNaivePath, reachedEntity, reachedLoc, reachedObj } from '#/engine/GameMap.js';
+import { changeNpcCollision, changePlayerOccCollision, findNaivePath, reachedEntity, reachedLoc, reachedObj } from '#/engine/GameMap.js';
 import { Inventory, InventoryListener } from '#/engine/Inventory.js';
 import ScriptFile from '#/engine/script/ScriptFile.js';
 import ScriptPointer from '#/engine/script/ScriptPointer.js';
@@ -75,6 +72,7 @@ import LinkList from '#/datastruct/LinkList.js';
 import VarBitType from '#/cache/config/VarBitType.js';
 import FriendlistLoaded from '#/network/game/server/model/FriendlistLoaded.js';
 import UpdateIgnoreList from '#/network/game/server/model/UpdateIgnoreList.js';
+import Midi from '#/cache/midi/Midi.js';
 
 const levelExperience = new Int32Array(99);
 
@@ -422,9 +420,8 @@ export default class Player extends PathingEntity {
             1,
             1,
             EntityLifeCycle.FOREVER,
-            MoveRestrict.NORMAL,
-            BlockWalk.NPC,
-            MoveStrategy.SMART,
+            BlockWalk.PLAYER,
+            Environment.NODE_CLIENT_ROUTEFINDER ? MoveStrategy.NAIVE : MoveStrategy.SMART,
             PlayerInfoProt.FACE_COORD,
             PlayerInfoProt.FACE_ENTITY
         );
@@ -454,6 +451,7 @@ export default class Player extends PathingEntity {
         this.slot = -1;
         this.uid = -1;
         this.activeScript = null;
+        this.resumeButtons = [];
         this.invListeners.length = 0;
         this.resumeButtons.length = 0;
         this.queue.clear();
@@ -726,7 +724,7 @@ export default class Player extends PathingEntity {
     }
 
     blockWalkFlag(): CollisionFlag {
-        return CollisionFlag.PLAYER;
+        return CollisionFlag.BLOCK_NPC_AND_PLAYERS;
     }
 
     defaultMoveSpeed(): MoveSpeed {
@@ -777,6 +775,7 @@ export default class Player extends PathingEntity {
         // close any input dialogue suspended scripts.
         if (this.activeScript?.execution === ScriptState.COUNTDIALOG || this.activeScript?.execution === ScriptState.PAUSEBUTTON) {
             this.activeScript = null;
+            this.resumeButtons = [];
         }
 
         // close any main viewport interface
@@ -1097,7 +1096,7 @@ export default class Player extends PathingEntity {
             return;
         }
 
-        if (this.isLastOrNoWaypoint() && (this.targetOp === ServerTriggerType.APPLAYER3 || this.targetOp === ServerTriggerType.OPPLAYER3)) {
+        if (this.isLastWaypoint() && (this.targetOp === ServerTriggerType.APPLAYER3 || this.targetOp === ServerTriggerType.OPPLAYER3)) {
             this.queueWaypoint(this.target.followX, this.target.followZ);
             return;
         }
@@ -1106,12 +1105,39 @@ export default class Player extends PathingEntity {
             return;
         }
 
-        if (Environment.NODE_CLIENT_ROUTEFINDER && CoordGrid.intersects(this.x, this.z, this.width, this.length, this.target.x, this.target.z, this.target.width, this.target.length)) {
-            this.queueWaypoints(findNaivePath(this.level, this.x, this.z, this.target.x, this.target.z, this.width, this.length, this.target.width, this.target.length, 0, CollisionType.NORMAL));
+        // Different mechanics for naive and smart paths
+        if (this.moveStrategy === MoveStrategy.NAIVE) {
+            // This logic is redundant with some stuff in pathToTarget and findNaivePath,
+            // But for maintainability it's nice to split it out... It's pretty hard to match correct mechanics
+            const underTarget = CoordGrid.intersects(this.x, this.z, this.width, this.length, this.target.x, this.target.z, this.target.width, this.target.length);
+            if (underTarget) {
+                this.randomWalk();
+                return;
+            }
+
+            if (this.isLastWaypoint()) {
+                this.naivePathToTarget();
+            }
+        } else if (this.isLastWaypoint()) {
+            this.pathToTarget();
+        }
+    }
+
+    naivePathToTarget() {
+        if (!this.target) {
             return;
         }
-        if (this.isLastOrNoWaypoint()) {
-            this.pathToTarget();
+        let angle = 0;
+        if (this.target instanceof Loc) {
+            angle = this.target.angle;
+        }
+
+        const { x, z } = CoordGrid.unpackCoord(this.waypoints[0]);
+
+        // If no waypoint, or waypoint is further than 1 tile from target, set new dest
+        if (this.waypointIndex === -1 || Math.abs(this.target.x - x) > 1 || Math.abs(this.target.z - z) > 1) {
+            const waypoints = findNaivePath(this.level, this.x, this.z, this.target.x, this.target.z, this.width, this.length, this.target.width, this.target.length, angle, CollisionType.NORMAL);
+            this.queueWaypoints(waypoints);
         }
     }
 
@@ -1276,8 +1302,7 @@ export default class Player extends PathingEntity {
                 return;
             }
 
-            // Run the optrigger, but applayer3 should not run this
-            if (!followOp) {
+            if (Environment.NODE_CLIENT_ROUTEFINDER && !followOp) {
                 this.processWalktrigger();
             }
 
@@ -1300,13 +1325,12 @@ export default class Player extends PathingEntity {
             }
 
             this.updateMovement();
-
             // If there's a target and p_access is available, try to interact after moving
             if (this.target && this.canAccess() && !followOp) {
                 interacted = this.tryInteract(this.stepsTaken === 0);
 
                 // If Player did not interact, has no path, and did not move this cycle, terminate the interaction
-                if (!interacted && !this.hasWaypoints() && this.stepsTaken === 0) {
+                if (!interacted && !this.apRangeCalled && !this.hasWaypoints() && this.stepsTaken === 0) {
                     this.messageGame("I can't reach that!");
                     this.clearInteraction();
                 }
@@ -1591,14 +1615,13 @@ export default class Player extends PathingEntity {
         container.removeAll();
     }
 
-    invAdd(inv: number, obj: number, count: number, assureFullInsertion: boolean = true): number {
+    invAdd(inv: number, obj: number, count: number): number {
         const container = this.getInventory(inv);
         if (!container) {
             throw new Error('invAdd: Invalid inventory type: ' + inv);
         }
 
-        const transaction = container.add(obj, count, -1, assureFullInsertion);
-        return transaction.completed;
+        return container.add(obj, count, -1);
     }
 
     invSet(inv: number, obj: number, count: number, slot: number) {
@@ -1625,8 +1648,7 @@ export default class Player extends PathingEntity {
             throw new Error('invDel: Invalid beginSlot: ' + beginSlot);
         }
 
-        const transaction = container.remove(obj, count, beginSlot);
-        return transaction.completed;
+        return container.remove(obj, count, beginSlot);
     }
 
     invDelSlot(inv: number, slot: number) {
@@ -1749,7 +1771,7 @@ export default class Player extends PathingEntity {
         this.invDelSlot(fromInv, fromSlot);
 
         return {
-            overflow: fromObj.count - this.invAdd(toInv, fromObj.id, fromObj.count, false),
+            overflow: fromObj.count - this.invAdd(toInv, fromObj.id, fromObj.count),
             fromObj: fromObj.id
         };
     }
@@ -2013,12 +2035,12 @@ export default class Player extends PathingEntity {
         // This doesn't actually cancel interactions, source: https://youtu.be/ARS7eO3_Z8U?si=OkYfjW0sVhkQmQ8y&t=293
         this.visibility = visibility;
         if (visibility === Visibility.DEFAULT) {
-            this.blockWalk = BlockWalk.NPC;
-            changeNpcCollision(this.width, this.x, this.z, this.level, true);
+            this.blockWalk = BlockWalk.PLAYER;
+            changePlayerOccCollision(this.width, this.x, this.z, this.level, true);
         } else {
             this.blockWalk = BlockWalk.NONE;
             changeNpcCollision(this.width, this.x, this.z, this.level, false);
-            changePlayerCollision(this.width, this.x, this.z, this.level, false);
+            changePlayerOccCollision(this.width, this.x, this.z, this.level, false);
         }
         this.messageGame(`vis: ${visibility}`);
     }
@@ -2036,8 +2058,8 @@ export default class Player extends PathingEntity {
         this.write(new MidiSong(id));
     }
 
-    playJingle(id: number, delay: number): void {
-        this.write(new MidiJingle(id, delay));
+    playJingle(id: number): void {
+        this.write(new MidiJingle(id, Midi.getLength(id)));
     }
 
     openMainModal(com: number) {
@@ -2062,6 +2084,7 @@ export default class Player extends PathingEntity {
         // clear old suspended scripts
         if (this.activeScript?.execution === ScriptState.COUNTDIALOG || this.activeScript?.execution === ScriptState.PAUSEBUTTON) {
             this.activeScript = null;
+            this.resumeButtons = [];
         }
     }
 
@@ -2103,6 +2126,7 @@ export default class Player extends PathingEntity {
         // clear old suspended scripts
         if (this.activeScript?.execution === ScriptState.COUNTDIALOG || this.activeScript?.execution === ScriptState.PAUSEBUTTON) {
             this.activeScript = null;
+            this.resumeButtons = [];
         }
     }
 
@@ -2126,6 +2150,7 @@ export default class Player extends PathingEntity {
         // clear old suspended scripts
         if (this.activeScript?.execution === ScriptState.COUNTDIALOG || this.activeScript?.execution === ScriptState.PAUSEBUTTON) {
             this.activeScript = null;
+            this.resumeButtons = [];
         }
     }
 
@@ -2151,10 +2176,12 @@ export default class Player extends PathingEntity {
         // clear old suspended scripts
         if (this.activeScript?.execution === ScriptState.COUNTDIALOG || this.activeScript?.execution === ScriptState.PAUSEBUTTON) {
             this.activeScript = null;
+            this.resumeButtons = [];
         }
     }
 
     exactMove(startX: number, startZ: number, endX: number, endZ: number, startCycle: number, endCycle: number, direction: number) {
+        this.teleport(endX, endZ, this.level);
         this.exactStartX = startX;
         this.exactStartZ = startZ;
         this.exactEndX = endX;
@@ -2163,13 +2190,6 @@ export default class Player extends PathingEntity {
         this.exactMoveEnd = endCycle;
         this.exactMoveFacing = direction;
         this.masks |= PlayerInfoProt.EXACT_MOVE;
-
-        // todo: interpolate over time? instant teleport? verify with true tile on osrs
-        this.x = endX;
-        this.z = endZ;
-        this.lastStepX = this.x - 1;
-        this.lastStepZ = this.z;
-        this.tele = true;
     }
 
     setTab(com: number, tab: number) {
@@ -2275,6 +2295,7 @@ export default class Player extends PathingEntity {
             }
         } else if (script === this.activeScript) {
             this.activeScript = null;
+            this.resumeButtons = [];
 
             if ((this.modalState & ModalState.MAIN) === ModalState.NONE) {
                 // close chat dialogues automatically and leave main modals alone
@@ -2325,7 +2346,7 @@ export default class Player extends PathingEntity {
         const nextDate: bigint = BigInt(Date.now());
 
         const lastIp = 2130706433; // 127.0.0.1
-        const daysSinceLogin: number = (Number(lastDate) / (1000 * 60 * 60 * 24)) | 0;
+        const daysSinceLogin: number = (Number(nextDate - lastDate) / (1000 * 60 * 60 * 24)) | 0;
         const daysSincePasswordChanged = 201; // hide :)
         const daysSinceRecoveriesChanged = 201; // hide :)
         const currentDay: number = (Number(nextDate) / (1000 * 60 * 60 * 24)) | 0;

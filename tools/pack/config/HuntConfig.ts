@@ -326,7 +326,7 @@ export function parseHuntConfig(key: string, value: string): ConfigValue | null 
         }
         return { inv, obj, condition, val };
     } else if (key === 'check_invparam') {
-        // check_inv=inv,param,min,max
+        // check_invparam=inv,param,cond
         const parts: string[] = value.split(',');
         if (parts.length !== 3) {
             return null;
@@ -389,7 +389,7 @@ export function parseHuntConfig(key: string, value: string): ConfigValue | null 
         }
         const conditionWithVal = parts[1];
         const condition = conditionWithVal.charAt(0);
-        if (!['=', '>', '<', '!'].includes(condition)) {
+        if (!['=', '>', '<', '!', '&'].includes(condition)) {
             return null;
         }
         const varp = VarpPack.getByName(parts[0].slice(1));
@@ -514,7 +514,7 @@ export function packHuntConfigs(configs: Map<string, ConfigLine[]>): { client: P
                     }
                 } else if (key === 'check_inv') {
                     if (
-                        config.every(x => x.key !== 'check_category' && x.key !== 'check_npc' && x.key !== 'check_obj' && x.key !== 'check_loc' && x.key !== 'check_invparam') &&
+                        config.every(x => x.key !== 'check_category' && x.key !== 'check_npc' && x.key !== 'check_obj' && x.key !== 'check_loc' && x.key !== 'check_invparam' && x.key !== 'check_invcat') &&
                         config.filter(x => x.key === 'type' && x.value === HuntModeType.PLAYER).length > 0
                     ) {
                         const checkInv: HuntCheckInv = value as HuntCheckInv;

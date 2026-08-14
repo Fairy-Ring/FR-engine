@@ -69,6 +69,8 @@ export default class HuntType extends ConfigType {
                 return value === checkValue;
             case '!':
                 return value !== checkValue;
+            case '&':
+                return (value & checkValue) === 0;
         }
         return false;
     }

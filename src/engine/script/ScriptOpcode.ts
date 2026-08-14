@@ -62,6 +62,7 @@ export const enum ScriptOpcode {
     SPOTANIM_MAP,
     WORLD_DELAY, // official
     MIDI_LENGTH,
+    MAP_LOC, // appended (LC 289)
 
     // Player ops (2000-2499)
     AFK_EVENT = 2000,
@@ -114,6 +115,7 @@ export const enum ScriptOpcode {
     IF_SETPLAYERHEAD, // official
     IF_SETPOSITION, // official
     IF_SETRESUMEBUTTONS,
+    IF_ADDRESUMEBUTTON = IF_SETRESUMEBUTTONS, // LC name for the same int
     IF_SETROTATION,
     IF_SETSCROLLPOS, // official
     IF_SETTAB,
@@ -206,6 +208,7 @@ export const enum ScriptOpcode {
     WEALTH_EVENT, // custom
     WEIGHT,
     SETIDKCOLOUR, // official; appended so SETSKINCOLOUR keeps its 377 number
+    P_TEMPRUN, // appended (LC 289)
 
     // Npc ops (2500-2999)
     NPC_ADD = 2500, // official
@@ -525,6 +528,7 @@ export const ScriptOpcodeMap: Map<string, number> = new Map([
     ['SPOTANIM_MAP', ScriptOpcode.SPOTANIM_MAP],
     ['WORLD_DELAY', ScriptOpcode.WORLD_DELAY],
     ['MIDI_LENGTH', ScriptOpcode.MIDI_LENGTH],
+    ['MAP_LOC', ScriptOpcode.MAP_LOC],
 
     ['AFK_EVENT', ScriptOpcode.AFK_EVENT],
     ['ALLOWDESIGN', ScriptOpcode.ALLOWDESIGN],
@@ -577,6 +581,7 @@ export const ScriptOpcodeMap: Map<string, number> = new Map([
     ['IF_SETPLAYERHEAD', ScriptOpcode.IF_SETPLAYERHEAD],
     ['IF_SETPOSITION', ScriptOpcode.IF_SETPOSITION],
     ['IF_SETRESUMEBUTTONS', ScriptOpcode.IF_SETRESUMEBUTTONS],
+    ['IF_ADDRESUMEBUTTON', ScriptOpcode.IF_ADDRESUMEBUTTON],
     ['IF_SETSCROLLPOS', ScriptOpcode.IF_SETSCROLLPOS],
     ['IF_SETTAB', ScriptOpcode.IF_SETTAB],
     ['IF_SETTABACTIVE', ScriptOpcode.IF_SETTABACTIVE],
@@ -638,6 +643,7 @@ export const ScriptOpcodeMap: Map<string, number> = new Map([
     ['SET_SKILL_LEVEL', ScriptOpcode.SET_SKILL_LEVEL],
     ['SETSKINCOLOUR', ScriptOpcode.SETSKINCOLOUR],
     ['SETIDKCOLOUR', ScriptOpcode.SETIDKCOLOUR],
+    ['P_TEMPRUN', ScriptOpcode.P_TEMPRUN],
     ['SETTIMER', ScriptOpcode.SETTIMER],
     ['SOFTTIMER', ScriptOpcode.SOFTTIMER],
     ['SOUND_SYNTH', ScriptOpcode.SOUND_SYNTH],
