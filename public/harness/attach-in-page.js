@@ -417,7 +417,10 @@ export function install(client, hooks = {}) {
       main: client.mainModalId ?? -1,
       side: client.sideModalId ?? -1,
       chat: client.chatModalId ?? -1,
-      overlay: client.mainOverlayId ?? client.viewportOverlayInterfaceId ?? -1
+      overlay: client.mainOverlayId ?? client.viewportOverlayInterfaceId ?? -1,
+      // IF_OPENFULL (login welcome) — not mainModalId
+      full0: client.fullscreenInterfaceId0 ?? -1,
+      full1: client.fullscreenInterfaceId1 ?? -1
     }),
     activeSideTab: () => client.activeIcon | 0,
     sideTabInterface: tab => client.sideIcon?.[tab] ?? -1,
