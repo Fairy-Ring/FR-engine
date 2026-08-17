@@ -873,10 +873,12 @@ const PlayerOps: CommandHandlers = {
         player.applyDamage(amount, type);
     },
 
-    [ScriptOpcode.IF_ADDRESUMEBUTTON]: state => {
-        const comId = state.popInt();
+    // Same int as IF_ADDRESUMEBUTTON. Live script.dat is still 5-arg if_setresumebuttons.
+    // LC 289 ADD pops one; taking that handler left multi2 resume empty → No trigger if_button.
+    [ScriptOpcode.IF_SETRESUMEBUTTONS]: state => {
+        const [button1, button2, button3, button4, button5] = state.popInts(5);
 
-        state.activePlayer.resumeButtons.push(comId);
+        state.activePlayer.resumeButtons = [button1, button2, button3, button4, button5];
     },
 
     [ScriptOpcode.TEXT_GENDER]: state => {
