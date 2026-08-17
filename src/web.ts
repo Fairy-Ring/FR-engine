@@ -107,15 +107,23 @@ fastify.route({
 });
 
 // cache routes
+// Fastify `/name:crc` also matches bare `/name` with crc="".
+// Isolation harness hits /versionlist and /config with no suffix (77a1ce03 startsWith).
+// Client still sends /versionlist<crc>; wrong crc stays 404.
+
+function archiveCrcOk(crc: string | undefined, expected: number): boolean {
+    if (crc === undefined || crc === '') {
+        return true;
+    }
+    return tryParseInt(crc, -1) === expected;
+}
 
 fastify.get('/crc:cachebust', async (_req, reply) => {
     reply.send(CrcBuffer.data);
 });
 
 fastify.get<{ Params: { crc: string } }>('/title:crc', async (req, reply) => {
-    const { crc } = req.params;
-
-    if (tryParseInt(crc, -1) !== CrcTable[1]) {
+    if (!archiveCrcOk(req.params.crc, CrcTable[1])) {
         reply.status(404);
         return;
     }
@@ -124,9 +132,7 @@ fastify.get<{ Params: { crc: string } }>('/title:crc', async (req, reply) => {
 });
 
 fastify.get<{ Params: { crc: string } }>('/config:crc', async (req, reply) => {
-    const { crc } = req.params;
-
-    if (tryParseInt(crc, -1) !== CrcTable[2]) {
+    if (!archiveCrcOk(req.params.crc, CrcTable[2])) {
         reply.status(404);
         return;
     }
@@ -135,9 +141,7 @@ fastify.get<{ Params: { crc: string } }>('/config:crc', async (req, reply) => {
 });
 
 fastify.get<{ Params: { crc: string } }>('/interface:crc', async (req, reply) => {
-    const { crc } = req.params;
-
-    if (tryParseInt(crc, -1) !== CrcTable[3]) {
+    if (!archiveCrcOk(req.params.crc, CrcTable[3])) {
         reply.status(404);
         return;
     }
@@ -146,9 +150,7 @@ fastify.get<{ Params: { crc: string } }>('/interface:crc', async (req, reply) =>
 });
 
 fastify.get<{ Params: { crc: string } }>('/media:crc', async (req, reply) => {
-    const { crc } = req.params;
-
-    if (tryParseInt(crc, -1) !== CrcTable[4]) {
+    if (!archiveCrcOk(req.params.crc, CrcTable[4])) {
         reply.status(404);
         return;
     }
@@ -157,9 +159,7 @@ fastify.get<{ Params: { crc: string } }>('/media:crc', async (req, reply) => {
 });
 
 fastify.get<{ Params: { crc: string } }>('/versionlist:crc', async (req, reply) => {
-    const { crc } = req.params;
-
-    if (tryParseInt(crc, -1) !== CrcTable[5]) {
+    if (!archiveCrcOk(req.params.crc, CrcTable[5])) {
         reply.status(404);
         return;
     }
@@ -168,9 +168,7 @@ fastify.get<{ Params: { crc: string } }>('/versionlist:crc', async (req, reply) 
 });
 
 fastify.get<{ Params: { crc: string } }>('/textures:crc', async (req, reply) => {
-    const { crc } = req.params;
-
-    if (tryParseInt(crc, -1) !== CrcTable[6]) {
+    if (!archiveCrcOk(req.params.crc, CrcTable[6])) {
         reply.status(404);
         return;
     }
@@ -179,9 +177,7 @@ fastify.get<{ Params: { crc: string } }>('/textures:crc', async (req, reply) => 
 });
 
 fastify.get<{ Params: { crc: string } }>('/wordenc:crc', async (req, reply) => {
-    const { crc } = req.params;
-
-    if (tryParseInt(crc, -1) !== CrcTable[7]) {
+    if (!archiveCrcOk(req.params.crc, CrcTable[7])) {
         reply.status(404);
         return;
     }
@@ -190,9 +186,7 @@ fastify.get<{ Params: { crc: string } }>('/wordenc:crc', async (req, reply) => {
 });
 
 fastify.get<{ Params: { crc: string } }>('/sounds:crc', async (req, reply) => {
-    const { crc } = req.params;
-
-    if (tryParseInt(crc, -1) !== CrcTable[8]) {
+    if (!archiveCrcOk(req.params.crc, CrcTable[8])) {
         reply.status(404);
         return;
     }
