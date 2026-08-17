@@ -199,6 +199,8 @@ export default class ObjType extends ConfigType {
             this.xof2d = dat.g2s();
         } else if (code === 8) {
             this.yof2d = dat.g2s();
+        } else if (code === 9) {
+            // 377 pack: code9 flag, no payload. LC 289 dropped the field.
         } else if (code === 10) {
             this.code10 = dat.g2();
         } else if (code === 11) {

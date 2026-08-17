@@ -78,6 +78,8 @@ export default class SpotanimType extends ConfigType {
             this.model = dat.g2();
         } else if (code === 2) {
             this.anim = dat.g2();
+        } else if (code === 3) {
+            // 377 pack: hasalpha flag, no payload. LC 289 dropped the field.
         } else if (code === 4) {
             this.resizeh = dat.g2();
         } else if (code === 5) {

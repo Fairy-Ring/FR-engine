@@ -147,6 +147,8 @@ export default class NpcType extends ConfigType {
             this.readyanim = dat.g2();
         } else if (code === 14) {
             this.walkanim = dat.g2();
+        } else if (code === 16) {
+            // 377 pack: hasanim flag, no payload. LC 289 dropped the field.
         } else if (code === 17) {
             this.walkanim = dat.g2();
             this.walkanim_b = dat.g2();
@@ -237,6 +239,12 @@ export default class NpcType extends ConfigType {
             }
         } else if (code === 107) {
             this.active = false;
+        } else if (code === 200) {
+            // 377 pack (pre-289 remap). New packs write 26.
+            this.wanderrange = dat.g2();
+        } else if (code === 201) {
+            // 377 pack (pre-289 remap). New packs write 27.
+            this.maxrange = dat.g2();
         } else if (code === 202) {
             this.huntrange = dat.g1();
         } else if (code === 203) {

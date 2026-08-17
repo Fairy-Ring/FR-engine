@@ -153,6 +153,8 @@ export default class LocType extends ConfigType {
             if (this.anim == 65535) {
                 this.anim = -1;
             }
+        } else if (code === 25) {
+            // 377 pack: hasalpha flag, no payload. LC 289 dropped the field.
         } else if (code === 28) {
             this.wallwidth = dat.g1();
         } else if (code === 29) {
