@@ -581,7 +581,8 @@ export const ScriptOpcodeMap: Map<string, number> = new Map([
     ['IF_SETPLAYERHEAD', ScriptOpcode.IF_SETPLAYERHEAD],
     ['IF_SETPOSITION', ScriptOpcode.IF_SETPOSITION],
     ['IF_SETRESUMEBUTTONS', ScriptOpcode.IF_SETRESUMEBUTTONS],
-    ['IF_ADDRESUMEBUTTON', ScriptOpcode.IF_ADDRESUMEBUTTON],
+    // Do not map IF_ADDRESUMEBUTTON onto this int. CompilerTypeInfo is
+    // id→one name; the ADD row stole if_setresumebuttons and compile died.
     ['IF_SETSCROLLPOS', ScriptOpcode.IF_SETSCROLLPOS],
     ['IF_SETTAB', ScriptOpcode.IF_SETTAB],
     ['IF_SETTABACTIVE', ScriptOpcode.IF_SETTABACTIVE],
