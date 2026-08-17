@@ -31,6 +31,9 @@ public/harness/harness-client.js
 public/harness/harness-client.js.map
 public/harness/ondemandworker.js
 public/harness/ondemandworker.js.map
+public/harness/attach-in-page.js
+public/*.bak*
+public/**/*.bak*
 
 ### Windows ###
 Thumbs.db
