@@ -4,7 +4,7 @@ import Js5FileStore from '#/io/Js5FileStore.js';
 import { JS5_HELLO_P1, parseJs5Hello, replyByte } from '#/io/Js5Hello.js';
 import { encodeJs5Group410 } from '#/io/Js5Reply410.js';
 import { parseJs5Request410 } from '#/io/Js5Request410.js';
-import { LOGIN_OUTER_FRESH, LOGIN_OUTER_RECONNECT, LOGIN_REPLY_CONTINUE, LOGIN_REPLY_OUTOFDATE, parseLogin410Prelude } from '#/io/Login410Prelude.js';
+import { LOGIN_OUTER_FRESH, LOGIN_OUTER_RECONNECT, LOGIN_REPLY_OK, LOGIN_REPLY_OUTOFDATE, parseLogin410Prelude } from '#/io/Login410Prelude.js';
 
 const PORT = Number(process.argv[2] ?? 43596);
 const HOST = '127.0.0.1';
@@ -132,7 +132,7 @@ const server = net.createServer(sock => {
             sock.destroy();
             return;
         }
-        const b = result.kind === 'ok' ? LOGIN_REPLY_CONTINUE : LOGIN_REPLY_OUTOFDATE;
+        const b = result.kind === 'ok' ? LOGIN_REPLY_OK : LOGIN_REPLY_OUTOFDATE;
         sock.write(Buffer.from([b]));
         if (result.kind !== 'ok') {
             sock.end();

@@ -1,6 +1,6 @@
 import net from 'node:net';
 
-import { LOGIN_OUTER_FRESH, LOGIN_REPLY_CONTINUE, LOGIN_REPLY_OUTOFDATE, LOGIN_REV, LOGIN_TRAILER } from '#/io/Login410Prelude.js';
+import { LOGIN_OUTER_FRESH, LOGIN_REPLY_OK, LOGIN_REPLY_OUTOFDATE, LOGIN_REV, LOGIN_TRAILER } from '#/io/Login410Prelude.js';
 
 function outer(rev: number): Buffer {
     const payload = Buffer.alloc(LOGIN_TRAILER);
@@ -33,8 +33,8 @@ const port = Number(process.argv[3] ?? 43596);
 const fails: string[] = [];
 
 const ok = await once(host, port, outer(LOGIN_REV));
-if (ok !== LOGIN_REPLY_CONTINUE) {
-    fails.push(`410 outer reply=${ok} want ${LOGIN_REPLY_CONTINUE}`);
+if (ok !== LOGIN_REPLY_OK) {
+    fails.push(`410 outer reply=${ok} want ${LOGIN_REPLY_OK}`);
 }
 
 const old = await once(host, port, outer(377));
@@ -53,4 +53,4 @@ if (fails.length) {
     }
     process.exit(1);
 }
-console.log('PASS login prelude p4(410)+12 → 0; p4(377) → 6');
+console.log('PASS login prelude p4(410)+12 → 2; p4(377) → 6');

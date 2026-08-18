@@ -4,6 +4,7 @@ export const LOGIN_OUTER_RECONNECT = 18; // literal only
 export const LOGIN_TRAILER = 53; // 4 + 1 + 12*4
 export const LOGIN_REPLY_OUTOFDATE = 6; // 377 World already uses this; do not rename
 export const LOGIN_REPLY_CONTINUE = 0;
+export const LOGIN_REPLY_OK = 2; // measured w==6 → w==9
 
 export type Login410PreludeResult = { kind: 'ok'; rev: number; flag: number } | { kind: 'outofdate'; rev: number } | { kind: 'bad-shape' };
 
