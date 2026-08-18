@@ -1,12 +1,13 @@
 import net from 'node:net';
 
 import { LOGIN_OUTER_FRESH, LOGIN_REPLY_OK, LOGIN_REPLY_OUTOFDATE, LOGIN_REV, LOGIN_TRAILER } from '#/io/Login410Prelude.js';
+import { loginOuter410 } from './login-outer410.js';
 
-function outer(rev: number): Buffer {
+function outerNoRsa(rev: number): Buffer {
     const payload = Buffer.alloc(LOGIN_TRAILER);
     payload.writeInt32BE(rev, 0);
     payload[4] = 0;
-    // 12 p4 stay 0
+    // 12 p4 stay 0; no RSA inner
     return Buffer.concat([Buffer.from([LOGIN_OUTER_FRESH, LOGIN_TRAILER]), payload]);
 }
 
@@ -39,7 +40,7 @@ const host = process.argv[2] ?? '127.0.0.1';
 const port = Number(process.argv[3] ?? 43596);
 const fails: string[] = [];
 
-const ok = await once(host, port, outer(LOGIN_REV), 9);
+const ok = await once(host, port, loginOuter410(LOGIN_REV), 9);
 if (ok === 'closed') {
     fails.push('410 outer closed with no reply');
 } else {
@@ -56,11 +57,16 @@ if (ok === 'closed') {
     }
 }
 
-const old = await once(host, port, outer(377), 1);
+const old = await once(host, port, loginOuter410(377), 1);
 if (old === 'closed') {
     fails.push('377 outer closed with no reply');
 } else if (old[0] !== LOGIN_REPLY_OUTOFDATE) {
     fails.push(`377 outer reply[0]=${old[0]} want ${LOGIN_REPLY_OUTOFDATE}`);
+}
+
+const noRsa = await once(host, port, outerNoRsa(LOGIN_REV), 1);
+if (noRsa !== 'closed') {
+    fails.push('410 outer without RSA replied, want destroy (no 2)');
 }
 
 if (fails.length) {
@@ -69,4 +75,4 @@ if (fails.length) {
     }
     process.exit(1);
 }
-console.log('PASS login 16/18 → 2 + 8 zero trailer');
+console.log('PASS login 16/18 → 2 + 8 zero trailer; 377 → 6; no-RSA → destroy');

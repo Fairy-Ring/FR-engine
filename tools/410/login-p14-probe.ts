@@ -1,14 +1,7 @@
 import net from 'node:net';
 
-import { LOGIN_OUTER_FRESH, LOGIN_REPLY_OK, LOGIN_REPLY_OUTOFDATE, LOGIN_REV, LOGIN_TRAILER } from '#/io/Login410Prelude.js';
-
-function outer(rev: number): Buffer {
-    const payload = Buffer.alloc(LOGIN_TRAILER);
-    payload.writeInt32BE(rev, 0);
-    payload[4] = 0;
-    // 12 p4 stay 0
-    return Buffer.concat([Buffer.from([LOGIN_OUTER_FRESH, LOGIN_TRAILER]), payload]);
-}
+import { LOGIN_REPLY_OK, LOGIN_REPLY_OUTOFDATE, LOGIN_REV } from '#/io/Login410Prelude.js';
+import { loginOuter410 } from './login-outer410.js';
 
 function once(host: string, port: number, payload: Buffer): Promise<number | 'closed'> {
     return new Promise((resolve, reject) => {
@@ -54,7 +47,7 @@ function p14OpenThenLogin(host: string, port: number, rev: number): Promise<stri
                 }
                 phase = 'login';
                 chunks.length = 0;
-                s.write(outer(rev));
+                s.write(loginOuter410(rev));
                 return;
             }
             const reply = buf[0];
@@ -86,7 +79,7 @@ const fails: string[] = [];
 const p14 = await p14OpenThenLogin(host, port, LOGIN_REV);
 fails.push(...p14);
 
-const old = await once(host, port, outer(377));
+const old = await once(host, port, loginOuter410(377));
 if (old !== LOGIN_REPLY_OUTOFDATE) {
     fails.push(`377 outer reply=${old} want ${LOGIN_REPLY_OUTOFDATE}`);
 }

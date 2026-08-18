@@ -1,9 +1,13 @@
+import fs from 'fs';
 import net from 'node:net';
+
+import forge from 'node-forge';
 
 import Js5FileStore from '#/io/Js5FileStore.js';
 import { JS5_HELLO_P1, parseJs5Hello, replyByte } from '#/io/Js5Hello.js';
 import { encodeJs5Group410 } from '#/io/Js5Reply410.js';
 import { parseJs5Request410 } from '#/io/Js5Request410.js';
+import { parseLogin410Inner } from '#/io/Login410Inner.js';
 import { LOGIN_OUTER_FRESH, LOGIN_OUTER_RECONNECT, LOGIN_REPLY_OK, LOGIN_REPLY_OUTOFDATE, parseLogin410Prelude } from '#/io/Login410Prelude.js';
 
 const PORT = Number(process.argv[2] ?? 43596);
@@ -13,6 +17,8 @@ const CACHE_DIR = process.argv[3];
 if (!CACHE_DIR) {
     throw new Error('usage: listen.ts [port] <cache-dir>');
 }
+
+const pem = forge.pki.privateKeyFromPem(fs.readFileSync('data/config/private.pem', 'ascii'));
 
 const store = new Js5FileStore(CACHE_DIR);
 
@@ -133,6 +139,12 @@ const server = net.createServer(sock => {
             return;
         }
         if (result.kind === 'ok') {
+            const payload = framed.subarray(1);
+            const inner = parseLogin410Inner(payload.subarray(53), pem);
+            if (inner.kind === 'bad-inner') {
+                sock.destroy();
+                return;
+            }
             // w9 trailer: g1 t, g1 flag, g2 player, g1 bb, g1 isaac start, g2 follow-len (zero stub)
             sock.write(Buffer.from([LOGIN_REPLY_OK, 0, 0, 0, 0, 0, 0, 0, 0]));
         } else {
