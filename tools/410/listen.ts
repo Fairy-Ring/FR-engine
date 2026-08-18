@@ -36,6 +36,46 @@ for (let i = 0; i <= 11; i++) {
 }
 console.log('PASS store 12 archives; maps=5');
 
+// archive-5 groups the client may decrypt for us (openrs2-410 keys.json)
+const keyedGroups = new Set<number>();
+const keysPath = process.argv[5] ?? (process.env.LC377_ROOT ? `${process.env.LC377_ROOT}/cache/openrs2-410/keys.json` : '');
+if (keysPath) {
+    try {
+        const rows: { archive: number; group: number; key: unknown }[] = JSON.parse(fs.readFileSync(keysPath, 'utf8'));
+        for (const row of rows) {
+            if (row.archive === 5 && Array.isArray(row.key) && row.key.length === 4) {
+                keyedGroups.add(row.group);
+            }
+        }
+    } catch {
+        console.log('js5 keys: none loaded');
+    }
+}
+
+function js5ContainerOk(blob: Uint8Array): boolean {
+    if (blob.length < 5) {
+        return false;
+    }
+    const compression = blob[0];
+    if (compression < 0 || compression > 2) {
+        return false;
+    }
+    const packed = ((blob[1] << 24) | (blob[2] << 16) | (blob[3] << 8) | blob[4]) >>> 0;
+    if (packed >= blob.length - 5) {
+        return false;
+    }
+    if (compression !== 0) {
+        if (blob.length < 9) {
+            return false;
+        }
+        const unpacked = (blob[5] << 24) | (blob[6] << 16) | (blob[7] << 8) | blob[8] | 0;
+        if (unpacked < 0 || unpacked > 2000000) {
+            return false;
+        }
+    }
+    return true;
+}
+
 const server = net.createServer(sock => {
     const chunks: Buffer[] = [];
     let n = 0;
@@ -183,6 +223,17 @@ const server = net.createServer(sock => {
                     replyQueue.length = 0;
                     sock.destroy();
                     return;
+                }
+                if (r.archive === 5 && !js5ContainerOk(blob) && !keyedGroups.has(r.group)) {
+                    // encrypted or not a JS5 container and no cited key: hold
+                    console.log(`js5 hold archive=5 group=${r.group}`);
+                    chunks.length = 0;
+                    const left = cur.subarray(4);
+                    if (left.length > 0) {
+                        chunks.push(left);
+                    }
+                    n = left.length;
+                    continue;
                 }
                 enqueue(encodeJs5Group410(r.archive, r.group, blob));
                 chunks.length = 0;
