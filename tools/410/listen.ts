@@ -1,10 +1,29 @@
 import net from 'node:net';
 
+import Js5FileStore from '#/io/Js5FileStore.js';
 import { JS5_HELLO_P1, parseJs5Hello, replyByte } from '#/io/Js5Hello.js';
 import { LOGIN_OUTER_FRESH, LOGIN_OUTER_RECONNECT, LOGIN_REPLY_CONTINUE, LOGIN_REPLY_OUTOFDATE, parseLogin410Prelude } from '#/io/Login410Prelude.js';
 
 const PORT = Number(process.argv[2] ?? 43596);
 const HOST = '127.0.0.1';
+const CACHE_DIR = process.argv[3];
+
+if (!CACHE_DIR) {
+    throw new Error('usage: listen.ts [port] <cache-dir>');
+}
+
+const store = new Js5FileStore(CACHE_DIR);
+
+if (store.count(255) !== 12) {
+    throw new Error(`store census failed: idx255 count=${store.count(255)} want 12`);
+}
+for (let i = 0; i <= 11; i++) {
+    const blob = store.read(255, i);
+    if (!blob || blob.length === 0) {
+        throw new Error(`store census failed: idx255 group ${i} unreadable`);
+    }
+}
+console.log('PASS store 12 archives; maps=5');
 
 const server = net.createServer(sock => {
     const chunks: Buffer[] = [];
@@ -51,8 +70,8 @@ const server = net.createServer(sock => {
                 return;
             }
             const seed = Buffer.alloc(8);
-            seed.writeInt32BE(Math.floor(Math.random() * 0x00ffffff), 0);
-            seed.writeInt32BE(Math.floor(Math.random() * 0xffffffff), 4);
+            seed.writeUInt32BE(Math.floor(Math.random() * 0x00ffffff), 0);
+            seed.writeUInt32BE(Math.floor(Math.random() * 0xffffffff), 4);
             sock.write(Buffer.concat([Buffer.alloc(8), Buffer.from([0]), seed]));
             // leave open; a later packet on the same socket may be 16/18
             const rest = buf.subarray(2);
