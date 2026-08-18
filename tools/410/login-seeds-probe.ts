@@ -63,10 +63,14 @@ if (ok === 'closed') {
     } else if (ok[0] !== LOGIN_REPLY_OK) {
         fails.push(`410 outer reply[0]=${ok[0]} want ${LOGIN_REPLY_OK}`);
     } else {
-        for (let i = 1; i < 9; i++) {
+        for (let i = 1; i < 8; i++) {
             if (ok[i] !== 0) {
                 fails.push(`410 trailer byte ${i}=${ok[i]} want 0`);
             }
+        }
+        const followLen = (ok[7] << 8) | ok[8];
+        if (followLen !== 153) {
+            fails.push(`410 follow-len=${followLen} want 153`);
         }
     }
 }

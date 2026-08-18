@@ -9,6 +9,7 @@ import { JS5_HELLO_P1, parseJs5Hello, replyByte } from '#/io/Js5Hello.js';
 import { encodeJs5Group410 } from '#/io/Js5Reply410.js';
 import { parseJs5Request410 } from '#/io/Js5Request410.js';
 import Isaac from '#/io/Isaac.js';
+import { encodeLogin410Follow } from '#/io/Login410Follow.js';
 import { parseLogin410Inner } from '#/io/Login410Inner.js';
 import { LOGIN_OUTER_FRESH, LOGIN_OUTER_RECONNECT, LOGIN_REPLY_OK, LOGIN_REPLY_OUTOFDATE, parseLogin410Prelude } from '#/io/Login410Prelude.js';
 
@@ -242,11 +243,13 @@ const server = net.createServer(sock => {
             console.log(`login uid=${inner.uid} name=${inner.username}`);
             decryptor = new Isaac(inner.seeds);
             const encryptor = new Isaac(inner.seeds.map(s => s + 50));
-            // w9 trailer: g1 t, g1 flag, g2 player, g1 bb, g1 isaac start, g2 follow-len (zero stub)
-            sock.write(Buffer.from([LOGIN_REPLY_OK, 0, 0, 0, 0, 0, 0, 0, 0]));
-            const out = (0 + encryptor.nextInt()) & 0xff;
-            sock.write(Buffer.from([out]));
-            console.log('login isaac out=0');
+            void encryptor; // kept; unused this unit
+            const follow = encodeLogin410Follow();
+            const head = Buffer.alloc(9);
+            head[0] = LOGIN_REPLY_OK;
+            head.writeUInt16BE(follow.length, 7);
+            sock.write(Buffer.concat([head, Buffer.from(follow)]));
+            console.log(`login follow ${follow.length}`);
             // consume the framed outer; leftover bytes are the first isaac bytes
             const rest = buf.subarray(2 + len);
             chunks.length = 0;

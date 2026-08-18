@@ -26,10 +26,14 @@ function run(host: string, port: number): Promise<string[]> {
             if (head[0] !== LOGIN_REPLY_OK) {
                 fails.push(`reply[0]=${head[0]} want ${LOGIN_REPLY_OK}`);
             }
-            for (let i = 1; i < 9; i++) {
+            for (let i = 1; i < 8; i++) {
                 if (head[i] !== 0) {
                     fails.push(`trailer byte ${i}=${head[i]} want 0`);
                 }
+            }
+            const followLen = (head[7] << 8) | head[8];
+            if (followLen !== 153) {
+                fails.push(`follow-len=${followLen} want 153`);
             }
             // fire-and-forget: write the one encoded isaac byte
             s.write(Buffer.from([encoded]));

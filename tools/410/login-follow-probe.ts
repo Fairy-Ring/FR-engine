@@ -1,5 +1,6 @@
 import net from 'node:net';
 
+import { encodeLogin410Follow, LOGIN_FOLLOW_LEN } from '#/io/Login410Follow.js';
 import { LOGIN_REPLY_OK, LOGIN_REV } from '#/io/Login410Prelude.js';
 import { loginOuter410 } from './login-outer410.js';
 
@@ -9,15 +10,16 @@ function run(host: string, port: number): Promise<string[]> {
     return new Promise((resolve, reject) => {
         let done = false;
         const s = net.connect({ host, port }, () => s.write(loginOuter410(LOGIN_REV)));
-        s.setTimeout(2000);
+        s.setTimeout(3000);
         const chunks: Buffer[] = [];
         s.on('data', (d: Buffer) => {
             chunks.push(d);
             const buf = Buffer.concat(chunks);
-            if (buf.length < 9) {
+            if (buf.length < 9 + LOGIN_FOLLOW_LEN) {
                 return;
             }
             const head = buf.subarray(0, 9);
+            const body = buf.subarray(9, 9 + LOGIN_FOLLOW_LEN);
             if (head[0] !== LOGIN_REPLY_OK) {
                 fails.push(`reply[0]=${head[0]} want ${LOGIN_REPLY_OK}`);
             }
@@ -27,8 +29,12 @@ function run(host: string, port: number): Promise<string[]> {
                 }
             }
             const followLen = (head[7] << 8) | head[8];
-            if (followLen !== 153) {
-                fails.push(`follow-len=${followLen} want 153`);
+            if (followLen !== LOGIN_FOLLOW_LEN) {
+                fails.push(`follow-len=${followLen} want ${LOGIN_FOLLOW_LEN}`);
+            }
+            const want = Buffer.from(encodeLogin410Follow());
+            if (!body.equals(want)) {
+                fails.push('follow body differs from encodeLogin410Follow()');
             }
             s.end();
             done = true;
@@ -36,7 +42,7 @@ function run(host: string, port: number): Promise<string[]> {
         });
         s.on('close', () => {
             if (!done) {
-                fails.push('closed before 9-byte reply');
+                fails.push('closed before 2+8+153 reply');
             }
             resolve(fails);
         });
@@ -60,4 +66,4 @@ if (fails.length) {
     }
     process.exit(1);
 }
-console.log('PASS login head 9-byte');
+console.log('PASS login follow 153');
