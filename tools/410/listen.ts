@@ -2,6 +2,7 @@ import net from 'node:net';
 
 import Js5FileStore from '#/io/Js5FileStore.js';
 import { JS5_HELLO_P1, parseJs5Hello, replyByte } from '#/io/Js5Hello.js';
+import { parseJs5Request410 } from '#/io/Js5Request410.js';
 import { LOGIN_OUTER_FRESH, LOGIN_OUTER_RECONNECT, LOGIN_REPLY_CONTINUE, LOGIN_REPLY_OUTOFDATE, parseLogin410Prelude } from '#/io/Login410Prelude.js';
 
 const PORT = Number(process.argv[2] ?? 43596);
@@ -28,7 +29,7 @@ console.log('PASS store 12 archives; maps=5');
 const server = net.createServer(sock => {
     const chunks: Buffer[] = [];
     let n = 0;
-    let mode: 'js5' | 'login' | 'open14' | null = null;
+    let mode: 'js5' | 'js5-xfer' | 'login' | 'open14' | null = null;
 
     sock.on('data', (c: Buffer) => {
         chunks.push(c);
@@ -61,6 +62,33 @@ const server = net.createServer(sock => {
             sock.write(Buffer.from([b]));
             if (result.kind !== 'ok') {
                 sock.end();
+                return;
+            }
+            // hello ok: later bytes are 4-byte requests, never a second hello
+            mode = 'js5-xfer';
+            chunks.length = 0;
+            const rest = buf.subarray(5);
+            if (rest.length > 0) {
+                chunks.push(rest);
+            }
+            n = rest.length;
+        }
+
+        if (mode === 'js5-xfer') {
+            while (n >= 4) {
+                const cur = Buffer.concat(chunks);
+                const r = parseJs5Request410(cur.subarray(0, 4));
+                if (r.kind === 'bad-shape') {
+                    sock.destroy();
+                    return;
+                }
+                console.log(`js5 req p1=${r.p1} archive=${r.archive} group=${r.group}`);
+                chunks.length = 0;
+                const left = cur.subarray(4);
+                if (left.length > 0) {
+                    chunks.push(left);
+                }
+                n = left.length;
             }
             return;
         }
