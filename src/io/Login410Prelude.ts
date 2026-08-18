@@ -6,7 +6,7 @@ export const LOGIN_REPLY_OUTOFDATE = 6; // 377 World already uses this; do not r
 export const LOGIN_REPLY_CONTINUE = 0;
 export const LOGIN_REPLY_OK = 2; // measured w==6 → w==9
 
-export type Login410PreludeResult = { kind: 'ok'; rev: number; flag: number } | { kind: 'outofdate'; rev: number } | { kind: 'bad-shape' };
+export type Login410PreludeResult = { kind: 'ok'; rev: number; flag: number; crcs: number[] } | { kind: 'outofdate'; rev: number } | { kind: 'bad-shape' };
 
 export function parseLogin410Prelude(opcode: number, framed: Uint8Array): Login410PreludeResult {
     if (opcode !== LOGIN_OUTER_FRESH && opcode !== LOGIN_OUTER_RECONNECT) {
@@ -24,5 +24,10 @@ export function parseLogin410Prelude(opcode: number, framed: Uint8Array): Login4
     if (rev !== LOGIN_REV) {
         return { kind: 'outofdate', rev };
     }
-    return { kind: 'ok', rev, flag: payload[4] };
+    const crcs: number[] = [];
+    for (let i = 0; i < 12; i++) {
+        const off = 5 + i * 4;
+        crcs[i] = ((payload[off] << 24) | (payload[off + 1] << 16) | (payload[off + 2] << 8) | payload[off + 3]) >>> 0;
+    }
+    return { kind: 'ok', rev, flag: payload[4], crcs };
 }

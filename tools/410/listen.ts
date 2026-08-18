@@ -160,6 +160,7 @@ const server = net.createServer(sock => {
             return;
         }
         if (result.kind === 'ok') {
+            console.log('login crcs ' + result.crcs.join(' '));
             const payload = framed.subarray(1);
             const inner = parseLogin410Inner(payload.subarray(53), pem);
             if (inner.kind === 'bad-inner') {
