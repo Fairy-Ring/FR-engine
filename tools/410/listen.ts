@@ -146,7 +146,7 @@ const server = net.createServer(sock => {
                 sock.destroy();
                 return;
             }
-            console.log('login seeds ' + inner.seeds.join(' '));
+            console.log(`login uid=${inner.uid} name=${inner.username}`);
             // ctor proof only; streams start in a later unit, no player attach
             new Isaac(inner.seeds);
             new Isaac(inner.seeds.map(s => s + 50));
