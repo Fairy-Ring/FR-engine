@@ -3,6 +3,7 @@ import net from 'node:net';
 
 import forge from 'node-forge';
 
+import Packet from '#/io/Packet.js';
 import Js5FileStore from '#/io/Js5FileStore.js';
 import { JS5_HELLO_P1, parseJs5Hello, replyByte } from '#/io/Js5Hello.js';
 import { encodeJs5Group410 } from '#/io/Js5Reply410.js';
@@ -12,7 +13,7 @@ import { parseLogin410Inner } from '#/io/Login410Inner.js';
 import { LOGIN_OUTER_FRESH, LOGIN_OUTER_RECONNECT, LOGIN_REPLY_OK, LOGIN_REPLY_OUTOFDATE, parseLogin410Prelude } from '#/io/Login410Prelude.js';
 
 const PORT = Number(process.argv[2] ?? 43596);
-const HOST = '127.0.0.1';
+const HOST = process.argv[4] ?? '0.0.0.0';
 const CACHE_DIR = process.argv[3];
 
 if (!CACHE_DIR) {
@@ -39,6 +40,41 @@ const server = net.createServer(sock => {
     let n = 0;
     let mode: 'js5' | 'js5-xfer' | 'login' | 'open14' | 'isaac' | null = null;
     let decryptor: Isaac | null = null;
+
+    // Client may reset a socket mid-burst; the process must stay up.
+    sock.on('error', (e: NodeJS.ErrnoException) => {
+        console.log(`sock error ${e.code}`);
+    });
+    sock.on('close', () => {
+        console.log('sock close');
+    });
+
+    // Client registers a request in its pending map after its own 4-byte write
+    // returns; a reply in the same tick can hit an unregistered job. Space
+    // group replies >= 5 ms apart, one queue per socket.
+    const replyQueue: Buffer[] = [];
+    let flushing = false;
+    const enqueue = (frame: Buffer): void => {
+        replyQueue.push(frame);
+        if (flushing) {
+            return;
+        }
+        flushing = true;
+        const flush = (): void => {
+            if (sock.destroyed) {
+                flushing = false;
+                return;
+            }
+            const next = replyQueue.shift();
+            if (next === undefined) {
+                flushing = false;
+                return;
+            }
+            sock.write(next);
+            setTimeout(flush, 5);
+        };
+        flush();
+    };
 
     const consumeIsaac = (): void => {
         while (n >= 1 && decryptor) {
@@ -100,18 +136,54 @@ const server = net.createServer(sock => {
         if (mode === 'js5-xfer') {
             while (n >= 4) {
                 const cur = Buffer.concat(chunks);
+                const p1 = cur[0];
+                // After hello the client writes p1(2) or p1(3) + 3 zero bytes
+                // (Static41.method787). Not a group request. Do not destroy.
+                if (p1 === 2 || p1 === 3 || p1 === 4) {
+                    console.log(`js5 ctrl p1=${p1}`);
+                    chunks.length = 0;
+                    const left = cur.subarray(4);
+                    if (left.length > 0) {
+                        chunks.push(left);
+                    }
+                    n = left.length;
+                    continue;
+                }
                 const r = parseJs5Request410(cur.subarray(0, 4));
                 if (r.kind === 'bad-shape') {
+                    console.log(`js5 bad p1=${p1}`);
                     sock.destroy();
                     return;
                 }
                 console.log(`js5 req p1=${r.p1} archive=${r.archive} group=${r.group}`);
-                const blob = store.read(r.archive, r.group);
+                // 0xFF00FF: CRC table for archives 0..255 (Static32 aLong152 == 16711935).
+                // Not a real idx255 group.
+                let blob: Uint8Array | null;
+                if (r.archive === 255 && r.group === 255) {
+                    const crcs = Buffer.alloc(1024);
+                    for (let i = 0; i < 256; i++) {
+                        const tab = store.read(255, i);
+                        const crc = tab ? Packet.getcrc(tab, 0, tab.length) : 0;
+                        crcs.writeInt32BE(crc, i * 4);
+                    }
+                    const inner = Buffer.alloc(5 + 1024);
+                    inner[0] = 0;
+                    inner.writeUInt32BE(1024, 1);
+                    crcs.copy(inner, 5);
+                    blob = new Uint8Array(inner);
+                    console.log('js5 255/255 crc table');
+                    // Client adds the 0xFF00FF job to the pending map after the
+                    // 4-byte write returns. Reply too soon → IOException, retry.
+                } else {
+                    blob = store.read(r.archive, r.group);
+                }
                 if (blob === null) {
+                    console.log(`js5 miss archive=${r.archive} group=${r.group}`);
+                    replyQueue.length = 0;
                     sock.destroy();
                     return;
                 }
-                sock.write(encodeJs5Group410(r.archive, r.group, blob));
+                enqueue(encodeJs5Group410(r.archive, r.group, blob));
                 chunks.length = 0;
                 const left = cur.subarray(4);
                 if (left.length > 0) {
