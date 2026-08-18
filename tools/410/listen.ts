@@ -7,6 +7,7 @@ import Js5FileStore from '#/io/Js5FileStore.js';
 import { JS5_HELLO_P1, parseJs5Hello, replyByte } from '#/io/Js5Hello.js';
 import { encodeJs5Group410 } from '#/io/Js5Reply410.js';
 import { parseJs5Request410 } from '#/io/Js5Request410.js';
+import Isaac from '#/io/Isaac.js';
 import { parseLogin410Inner } from '#/io/Login410Inner.js';
 import { LOGIN_OUTER_FRESH, LOGIN_OUTER_RECONNECT, LOGIN_REPLY_OK, LOGIN_REPLY_OUTOFDATE, parseLogin410Prelude } from '#/io/Login410Prelude.js';
 
@@ -145,6 +146,10 @@ const server = net.createServer(sock => {
                 sock.destroy();
                 return;
             }
+            console.log('login seeds ' + inner.seeds.join(' '));
+            // ctor proof only; streams start in a later unit, no player attach
+            new Isaac(inner.seeds);
+            new Isaac(inner.seeds.map(s => s + 50));
             // w9 trailer: g1 t, g1 flag, g2 player, g1 bb, g1 isaac start, g2 follow-len (zero stub)
             sock.write(Buffer.from([LOGIN_REPLY_OK, 0, 0, 0, 0, 0, 0, 0, 0]));
         } else {
