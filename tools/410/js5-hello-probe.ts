@@ -44,7 +44,7 @@ if (old !== JS5_REPLY_OUTOFDATE) {
     fails.push(`377 hello reply=${old} want ${JS5_REPLY_OUTOFDATE}`);
 }
 
-const bad = await once(host, port, Buffer.from([14, 0, 0, 0, 0]));
+const bad = await once(host, port, Buffer.from([13, 0, 0, 0, 0]));
 if (bad !== 'closed' && bad !== undefined) {
     // destroy with no byte is ok; a 0/6 would be wrong
     if (typeof bad === 'number') {

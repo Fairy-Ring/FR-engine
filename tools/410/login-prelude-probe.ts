@@ -42,9 +42,9 @@ if (old !== LOGIN_REPLY_OUTOFDATE) {
     fails.push(`377 outer reply=${old} want ${LOGIN_REPLY_OUTOFDATE}`);
 }
 
-const bad = await once(host, port, Buffer.from([14, 5, 0, 0, 0, 0, 0]));
+const bad = await once(host, port, Buffer.from([13, 5, 0, 0, 0, 0, 0]));
 if (typeof bad === 'number') {
-    fails.push(`opcode 14 replied ${bad}`);
+    fails.push(`opcode 13 replied ${bad}`);
 }
 
 if (fails.length) {
