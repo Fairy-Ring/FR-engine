@@ -37,7 +37,22 @@ console.log('PASS store 12 archives; maps=5');
 const server = net.createServer(sock => {
     const chunks: Buffer[] = [];
     let n = 0;
-    let mode: 'js5' | 'js5-xfer' | 'login' | 'open14' | null = null;
+    let mode: 'js5' | 'js5-xfer' | 'login' | 'open14' | 'isaac' | null = null;
+    let decryptor: Isaac | null = null;
+
+    const consumeIsaac = (): void => {
+        while (n >= 1 && decryptor) {
+            const cur = Buffer.concat(chunks);
+            const b = cur[0];
+            console.log(`login isaac opcode=${(b - decryptor.nextInt()) & 0xff}`);
+            chunks.length = 0;
+            const left = cur.subarray(1);
+            if (left.length > 0) {
+                chunks.push(left);
+            }
+            n = left.length;
+        }
+    };
 
     sock.on('data', (c: Buffer) => {
         chunks.push(c);
@@ -126,6 +141,11 @@ const server = net.createServer(sock => {
             return;
         }
 
+        if (mode === 'isaac') {
+            consumeIsaac();
+            return;
+        }
+
         if (n < 2) {
             return;
         }
@@ -147,11 +167,20 @@ const server = net.createServer(sock => {
                 return;
             }
             console.log(`login uid=${inner.uid} name=${inner.username}`);
-            // ctor proof only; streams start in a later unit, no player attach
-            new Isaac(inner.seeds);
-            new Isaac(inner.seeds.map(s => s + 50));
+            decryptor = new Isaac(inner.seeds);
+            const encryptor = new Isaac(inner.seeds.map(s => s + 50));
+            void encryptor; // kept; unused this unit
             // w9 trailer: g1 t, g1 flag, g2 player, g1 bb, g1 isaac start, g2 follow-len (zero stub)
             sock.write(Buffer.from([LOGIN_REPLY_OK, 0, 0, 0, 0, 0, 0, 0, 0]));
+            // consume the framed outer; leftover bytes are the first isaac bytes
+            const rest = buf.subarray(2 + len);
+            chunks.length = 0;
+            if (rest.length > 0) {
+                chunks.push(rest);
+            }
+            n = rest.length;
+            mode = 'isaac';
+            consumeIsaac();
         } else {
             sock.write(Buffer.from([LOGIN_REPLY_OUTOFDATE]));
             sock.end();
