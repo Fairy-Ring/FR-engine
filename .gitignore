@@ -69,3 +69,6 @@ $RECYCLE.BIN/
 *.sublime-project
 *.sublime-workspace
 
+# heartbeat — engine/client 410 stack status, never committed
+.impl-status.md
+
