@@ -33,18 +33,14 @@ function p14OpenThenLogin(host: string, port: number, rev: number): Promise<stri
             chunks.push(d);
             const buf = Buffer.concat(chunks);
             if (phase === 'seed') {
-                if (buf.length < 17) {
+                if (buf.length < 9) {
                     return;
                 }
-                const head = buf.subarray(0, 17);
-                for (let i = 0; i < 8; i++) {
-                    if (head[i] !== 0) {
-                        fails.push(`seed zero[${i}]=${head[i]}`);
-                    }
+                const head = buf.subarray(0, 9);
+                if (head[0] !== 0) {
+                    fails.push(`continue byte=${head[0]} want 0`);
                 }
-                if (head[8] !== 0) {
-                    fails.push(`login-server byte=${head[8]}`);
-                }
+                // bytes 1..8 are the seed; any values accepted
                 phase = 'login';
                 chunks.length = 0;
                 s.write(loginOuter410(rev));
@@ -60,7 +56,7 @@ function p14OpenThenLogin(host: string, port: number, rev: number): Promise<stri
         });
         s.on('close', () => {
             if (!done) {
-                fails.push(phase === 'seed' ? 'closed before 17-byte reply' : 'closed before 16/18 reply');
+                fails.push(phase === 'seed' ? 'closed before 9-byte reply' : 'closed before 16/18 reply');
             }
             resolve(fails);
         });
@@ -90,4 +86,4 @@ if (fails.length) {
     }
     process.exit(1);
 }
-console.log('PASS p14 + p4(410) → 2');
+console.log('PASS p14 9-byte then 16/18 → 2');

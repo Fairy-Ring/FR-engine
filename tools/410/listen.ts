@@ -199,9 +199,9 @@ const server = net.createServer(sock => {
                 return;
             }
             const seed = Buffer.alloc(8);
-            seed.writeUInt32BE(Math.floor(Math.random() * 0x00ffffff), 0);
+            seed.writeUInt32BE(Math.floor(Math.random() * 0xffffffff), 0);
             seed.writeUInt32BE(Math.floor(Math.random() * 0xffffffff), 4);
-            sock.write(Buffer.concat([Buffer.alloc(8), Buffer.from([0]), seed]));
+            sock.write(Buffer.concat([Buffer.from([0]), seed]));
             // leave open; a later packet on the same socket may be 16/18
             const rest = buf.subarray(2);
             chunks.length = 0;
