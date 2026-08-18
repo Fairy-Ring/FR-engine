@@ -69,10 +69,10 @@ function fetchGroup(host: string, port: number, want: Buffer): Promise<string | 
 const host = process.argv[2] ?? '127.0.0.1';
 const port = Number(process.argv[3] ?? 43596);
 const root = process.env.LC377_ROOT;
-if (!root) {
+const cacheDir = process.argv[4] ?? (root ? path.join(root, 'cache', 'openrs2-410', 'disk', 'cache') : null);
+if (!cacheDir) {
     throw new Error('LC377_ROOT not set');
 }
-const cacheDir = process.argv[4] ?? path.join(root, 'cache', 'openrs2-410', 'disk', 'cache');
 
 const store = new Js5FileStore(cacheDir);
 const blob = store.read(255, 0);
