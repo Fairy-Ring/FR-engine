@@ -2,6 +2,7 @@ import net from 'node:net';
 
 import Js5FileStore from '#/io/Js5FileStore.js';
 import { JS5_HELLO_P1, parseJs5Hello, replyByte } from '#/io/Js5Hello.js';
+import { encodeJs5Group410 } from '#/io/Js5Reply410.js';
 import { parseJs5Request410 } from '#/io/Js5Request410.js';
 import { LOGIN_OUTER_FRESH, LOGIN_OUTER_RECONNECT, LOGIN_REPLY_CONTINUE, LOGIN_REPLY_OUTOFDATE, parseLogin410Prelude } from '#/io/Login410Prelude.js';
 
@@ -83,6 +84,12 @@ const server = net.createServer(sock => {
                     return;
                 }
                 console.log(`js5 req p1=${r.p1} archive=${r.archive} group=${r.group}`);
+                const blob = store.read(r.archive, r.group);
+                if (blob === null) {
+                    sock.destroy();
+                    return;
+                }
+                sock.write(encodeJs5Group410(r.archive, r.group, blob));
                 chunks.length = 0;
                 const left = cur.subarray(4);
                 if (left.length > 0) {
