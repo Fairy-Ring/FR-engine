@@ -132,9 +132,11 @@ const server = net.createServer(sock => {
             sock.destroy();
             return;
         }
-        const b = result.kind === 'ok' ? LOGIN_REPLY_OK : LOGIN_REPLY_OUTOFDATE;
-        sock.write(Buffer.from([b]));
-        if (result.kind !== 'ok') {
+        if (result.kind === 'ok') {
+            // w9 trailer: g1 t, g1 flag, g2 player, g1 bb, g1 isaac start, g2 follow-len (zero stub)
+            sock.write(Buffer.from([LOGIN_REPLY_OK, 0, 0, 0, 0, 0, 0, 0, 0]));
+        } else {
+            sock.write(Buffer.from([LOGIN_REPLY_OUTOFDATE]));
             sock.end();
         }
     });
