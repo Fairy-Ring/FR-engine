@@ -26,7 +26,8 @@ assert(((packed >> 3) & 0x7ff) === srcTileZ >> 3, 'mapZ is source 8x8 zone Z');
 assert(((packed >> 1) & 0x3) === 2, 'rotation');
 assert(packed === ((0 << 24) | ((srcTileX >> 3) << 14) | ((srcTileZ >> 3) << 3) | (2 << 1)), '26-bit formula');
 
-// keys[1][6][7] in the 13×13 window = centre zoneZ, centre+1 zoneX.
+// sceneMapRegion[1][y][x]: y = dest zoneX offset, x = dest zoneZ offset.
+// zoneX+1 at centre Z → y=7, x=6.
 const present: RegionTemplate = {
     level: 1,
     zoneX: 807 + 1,
@@ -49,7 +50,7 @@ for (let level: number = 0; level < 4; level++) {
     for (let y: number = 0; y < 13; y++) {
         for (let x: number = 0; x < 13; x++) {
             const flag = buf.gBit(1);
-            if (level === 1 && y === 6 && x === 7) {
+            if (level === 1 && y === 7 && x === 6) {
                 assert(flag === 1, 'present bit');
                 const key = buf.gBit(26);
                 assert(key === packed, '26-bit key round-trip');

@@ -22,10 +22,12 @@ export default class RebuildRegionEncoder extends ServerGameMessageEncoder<Rebui
 
         buf.bitStart();
 
-        // Client-TS/Java 377 reads sceneMapRegion[level][y][x] with y (zoneZ) outer, x (zoneX) inner.
+        // Client-TS sceneMapRegion[level][y][x]: Java method16 destX = chunkY*8, destZ = chunkX*8.
+        // y is dest zoneX, x is dest zoneZ. PR 95 X-outer matches that. Headed 7315 at
+        // local 55,4 (delta-swap of dest-from-maps 23,36) was Z-outer.
         for (let level = 0; level < 4; level++) {
-            for (let zoneZ = message.zoneZ - 6; zoneZ <= message.zoneZ + 6; zoneZ++) {
-                for (let zoneX = message.zoneX - 6; zoneX <= message.zoneX + 6; zoneX++) {
+            for (let zoneX = message.zoneX - 6; zoneX <= message.zoneX + 6; zoneX++) {
+                for (let zoneZ = message.zoneZ - 6; zoneZ <= message.zoneZ + 6; zoneZ++) {
                     const key = (level << 22) | ((zoneX & 0x7ff) << 11) | (zoneZ & 0x7ff);
                     const packed = templateByZone.get(key);
 
@@ -52,8 +54,8 @@ export default class RebuildRegionEncoder extends ServerGameMessageEncoder<Rebui
 
         let bits = 0;
         for (let level = 0; level < 4; level++) {
-            for (let zoneZ = message.zoneZ - 6; zoneZ <= message.zoneZ + 6; zoneZ++) {
-                for (let zoneX = message.zoneX - 6; zoneX <= message.zoneX + 6; zoneX++) {
+            for (let zoneX = message.zoneX - 6; zoneX <= message.zoneX + 6; zoneX++) {
+                for (let zoneZ = message.zoneZ - 6; zoneZ <= message.zoneZ + 6; zoneZ++) {
                     const key = (level << 22) | ((zoneX & 0x7ff) << 11) | (zoneZ & 0x7ff);
                     bits += templateByZone.has(key) ? 27 : 1;
                 }
