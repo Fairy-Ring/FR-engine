@@ -85,6 +85,7 @@ export default class GameMap {
             return;
         }
 
+        this.zonemap.beginInitialization();
         printDebug('Loading game map');
 
         if (fs.existsSync(`${Environment.BUILD_SRC_DIR}/maps/multiway.csv`)) {
@@ -133,6 +134,7 @@ export default class GameMap {
         }
 
         printDebug(`${World.getTotalNpcs()}/16383 static NPCs added`);
+        this.zonemap.endInitialization();
     }
 
     isMulti(coord: number): boolean {
@@ -145,11 +147,51 @@ export default class GameMap {
     }
 
     getZone(x: number, z: number, level: number): Zone {
-        return this.zonemap.zone(x, z, level);
+        return this.zonemap.getZone(x, z, level);
     }
 
     getZoneIndex(zoneIndex: number): Zone {
-        return this.zonemap.zoneByIndex(zoneIndex);
+        return this.zonemap.getZoneByIndex(zoneIndex);
+    }
+
+    getZoneIfExists(x: number, z: number, level: number): Zone | null {
+        return this.zonemap.getZoneIfExists(x, z, level);
+    }
+
+    getZoneIndexIfExists(zoneIndex: number): Zone | null {
+        return this.zonemap.getZoneByIndexIfExists(zoneIndex);
+    }
+
+    createInstanceZone(zoneIndex: number): Zone {
+        return this.zonemap.createInstanceZone(zoneIndex);
+    }
+
+    hasZone(x: number, z: number, level: number): boolean {
+        return this.zonemap.hasZone(x, z, level);
+    }
+
+    isInitializing(): boolean {
+        return this.zonemap.isInitializingMap();
+    }
+
+    addZone(zone: Zone): Zone {
+        return this.zonemap.addZone(zone);
+    }
+
+    removeZone(index: number): boolean {
+        return this.zonemap.removeZone(index);
+    }
+
+    isMultiZone(zoneIndex: number): boolean {
+        return this.multimap.has(zoneIndex);
+    }
+
+    setMultiZone(zoneIndex: number, multi: boolean): void {
+        if (multi) {
+            this.multimap.add(zoneIndex);
+        } else {
+            this.multimap.delete(zoneIndex);
+        }
     }
 
     getZoneGrid(level: number): ZoneGrid {

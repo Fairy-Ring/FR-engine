@@ -35,6 +35,15 @@ export default class CollisionEngine {
         return this.zones.has(CollisionEngine.zoneIndex(x, z, y));
     }
 
+    /** 8×8 collision flags for instance copy (LC Engine-TS#95 InstanceZone). */
+    getZone(x: number, z: number, y: number): Uint32Array | undefined {
+        return this.zones.get(CollisionEngine.zoneIndex(x, z, y));
+    }
+
+    setZone(x: number, z: number, y: number, data: Uint32Array): void {
+        this.zones.set(CollisionEngine.zoneIndex(x, z, y), data);
+    }
+
     get(x: number, z: number, y: number): number {
         const zone = this.zones.get(CollisionEngine.zoneIndex(x, z, y));
         return zone ? zone[CollisionEngine.tileIndex(x, z)] : CollisionFlag.NULL;

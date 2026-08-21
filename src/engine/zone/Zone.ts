@@ -75,6 +75,10 @@ export default class Zone {
         return this.objsCount;
     }
 
+    hasPlayers(): boolean {
+        return !this.players.isEmpty();
+    }
+
     enter(entity: PathingEntity): void {
         if (entity instanceof Player) {
             this.players.addTail(entity);
