@@ -24,6 +24,35 @@ export default class ZoneMap {
         this.grids = new Map();
     }
 
+    // Keep in sync with InstanceController slot layout. Do not import
+    // InstanceController from here (GameMap cycle). Overworld NPCs wander
+    // off packed squares; PR 95 getZone throw kills the cycle. Lazy-create
+    // overworld only — instance footprints must stay empty for InstanceZone.
+    private static readonly INSTANCE_FIRST_MX: number = 25857 >> 8;
+    private static readonly INSTANCE_FIRST_MZ: number = 25857 & 0xff;
+    private static readonly INSTANCE_STRIDE: number = 192;
+    private static readonly INSTANCE_SIZE: number = 128;
+    private static readonly INSTANCE_COLS: number = 32;
+    private static readonly INSTANCE_ROWS: number = 64;
+
+    static inReservedInstanceGrid(x: number, z: number): boolean {
+        const firstX: number = ZoneMap.INSTANCE_FIRST_MX << 6;
+        const firstZ: number = ZoneMap.INSTANCE_FIRST_MZ << 6;
+        if (x < firstX || z < firstZ) {
+            return false;
+        }
+        const relX: number = x - firstX;
+        const relZ: number = z - firstZ;
+        const slotX: number = Math.trunc(relX / ZoneMap.INSTANCE_STRIDE);
+        const slotZ: number = Math.trunc(relZ / ZoneMap.INSTANCE_STRIDE);
+        if (slotX < 0 || slotX >= ZoneMap.INSTANCE_COLS || slotZ < 0 || slotZ >= ZoneMap.INSTANCE_ROWS) {
+            return false;
+        }
+        const localX: number = relX - slotX * ZoneMap.INSTANCE_STRIDE;
+        const localZ: number = relZ - slotZ * ZoneMap.INSTANCE_STRIDE;
+        return localX < ZoneMap.INSTANCE_SIZE && localZ < ZoneMap.INSTANCE_SIZE;
+    }
+
     /**
      * Call before loading map data to allow zone auto-creation.
      */
@@ -46,22 +75,19 @@ export default class ZoneMap {
     }
 
     /**
-     * Get an existing zone, or auto-create it during initialization.
-     * After initialization completes, zones must be pre-created or use getZoneIfExists().
-     * @throws Error if zone doesn't exist and initialization is complete.
+     * Get a zone, lazy-creating overworld tiles. Instance-grid slots stay
+     * empty until createInstanceZone (PR 95 InstanceZone).
      */
     getZone(x: number, z: number, level: number): Zone {
         const zoneIndex: number = ZoneMap.zoneIndex(x, z, level);
         let zone: Zone | undefined = this.zones.get(zoneIndex);
 
         if (typeof zone === 'undefined') {
-            if (this.isInitializing) {
-                // Auto-create zone only during initialization
+            if (this.isInitializing || !ZoneMap.inReservedInstanceGrid(x, z)) {
                 zone = new Zone(zoneIndex);
                 this.zones.set(zoneIndex, zone);
             } else {
-                // Enforce zone pre-creation after initialization
-                throw new Error(`Zone does not exist at (${x}, ${z}, L${level}). Zones must be pre-created during world startup.`);
+                throw new Error(`Zone does not exist at (${x}, ${z}, L${level}). Instance slots must use createInstanceZone.`);
             }
         }
         return zone;
@@ -76,14 +102,12 @@ export default class ZoneMap {
         let zone: Zone | undefined = this.zones.get(index);
 
         if (typeof zone === 'undefined') {
-            if (this.isInitializing) {
-                // Auto-create zone only during initialization
+            const unpacked = ZoneMap.unpackIndex(index);
+            if (this.isInitializing || !ZoneMap.inReservedInstanceGrid(unpacked.x, unpacked.z)) {
                 zone = new Zone(index);
                 this.zones.set(index, zone);
             } else {
-                // Enforce zone pre-creation after initialization
-                const unpacked = ZoneMap.unpackIndex(index);
-                throw new Error(`Zone does not exist at (${unpacked.x}, ${unpacked.z}, L${unpacked.level}). Zones must be pre-created during world startup.`);
+                throw new Error(`Zone does not exist at (${unpacked.x}, ${unpacked.z}, L${unpacked.level}). Instance slots must use createInstanceZone.`);
             }
         }
         return zone;
