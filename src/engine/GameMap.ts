@@ -22,6 +22,21 @@ import { printDebug, printFatalError, printWarning } from '#/util/Logger.js';
 
 export type RouteCoordinates = { x: number; z: number };
 
+type PackedMapsquare = {
+    m: Uint8Array;
+    l: Uint8Array;
+    n: Uint8Array;
+    o: Uint8Array;
+};
+
+/** Runtime dest of a `map_build` copy. Packed source files are not mutated. */
+export type InstancedMap = {
+    srcMx: number;
+    srcMz: number;
+    destMx: number;
+    destMz: number;
+};
+
 export default class GameMap {
     private static readonly OPEN: number = 0x0;
     private static readonly BLOCK_MAP_SQUARE: number = 0x1;
@@ -36,16 +51,31 @@ export default class GameMap {
 
     private static readonly MAPSQUARE: number = GameMap.X * GameMap.Y * GameMap.Z;
 
+    // dest mx 200–255 stays above packed 0–99; p2 player coords still fit.
+    // stride 2 keeps 13×13 rebuild windows from overlapping a neighbour dest.
+    private static readonly INSTANCE_MX_MIN: number = 200;
+    private static readonly INSTANCE_MX_MAX: number = 255;
+    private static readonly INSTANCE_MZ_MAX: number = 255;
+    private static readonly INSTANCE_STRIDE: number = 2;
+
     private readonly members: boolean;
     private readonly zonemap: ZoneMap;
     private readonly multimap: Set<number>;
     private readonly freemap: Set<number>;
+    private readonly packed: Map<number, PackedMapsquare>;
+    private readonly instances: Map<number, InstancedMap>;
+    private nextDestMx: number;
+    private nextDestMz: number;
 
     constructor(members: boolean) {
         this.members = members;
         this.zonemap = new ZoneMap();
         this.multimap = new Set();
         this.freemap = new Set();
+        this.packed = new Map();
+        this.instances = new Map();
+        this.nextDestMx = GameMap.INSTANCE_MX_MIN;
+        this.nextDestMz = 0;
     }
 
     init(): void {
@@ -72,12 +102,14 @@ export default class GameMap {
                 const mapsquareX: number = mx << 6;
                 const mapsquareZ: number = mz << 6;
 
-                this.loadNpcs(new Packet(mapEntries[`n${mx}_${mz}`] ?? new Uint8Array()), mapsquareX, mapsquareZ);
-                this.loadObjs(new Packet(mapEntries[`o${mx}_${mz}`] ?? new Uint8Array()), mapsquareX, mapsquareZ);
-                // collision
-                const lands: Int8Array = new Int8Array(GameMap.MAPSQUARE); // 4 * 64 * 64 size is guaranteed for lands
-                this.loadGround(lands, new Packet(mapEntries[`m${mx}_${mz}`]), mapsquareX, mapsquareZ);
-                this.loadLocations(lands, new Packet(mapEntries[`l${mx}_${mz}`]), mapsquareX, mapsquareZ);
+                const packed: PackedMapsquare = {
+                    m: new Uint8Array(mapEntries[`m${mx}_${mz}`] ?? new Uint8Array()),
+                    l: new Uint8Array(mapEntries[`l${mx}_${mz}`] ?? new Uint8Array()),
+                    n: new Uint8Array(mapEntries[`n${mx}_${mz}`] ?? new Uint8Array()),
+                    o: new Uint8Array(mapEntries[`o${mx}_${mz}`] ?? new Uint8Array())
+                };
+                this.packed.set((mx << 8) | mz, packed);
+                this.loadPackedMapsquare(packed, mapsquareX, mapsquareZ);
             }
         } else {
             const path: string = 'data/pack/server/maps/';
@@ -87,12 +119,14 @@ export default class GameMap {
                 const mapsquareX: number = mx << 6;
                 const mapsquareZ: number = mz << 6;
 
-                this.loadNpcs(Packet.load(`${path}n${mx}_${mz}`), mapsquareX, mapsquareZ);
-                this.loadObjs(Packet.load(`${path}o${mx}_${mz}`), mapsquareX, mapsquareZ);
-                // collision
-                const lands: Int8Array = new Int8Array(GameMap.MAPSQUARE); // 4 * 64 * 64 size is guaranteed for lands
-                this.loadGround(lands, Packet.load(`${path}m${mx}_${mz}`), mapsquareX, mapsquareZ);
-                this.loadLocations(lands, Packet.load(`${path}l${mx}_${mz}`), mapsquareX, mapsquareZ);
+                const packed: PackedMapsquare = {
+                    m: Packet.load(`${path}m${mx}_${mz}`).data.slice(),
+                    l: Packet.load(`${path}l${mx}_${mz}`).data.slice(),
+                    n: fs.existsSync(`${path}n${mx}_${mz}`) ? Packet.load(`${path}n${mx}_${mz}`).data.slice() : new Uint8Array(),
+                    o: fs.existsSync(`${path}o${mx}_${mz}`) ? Packet.load(`${path}o${mx}_${mz}`).data.slice() : new Uint8Array()
+                };
+                this.packed.set((mx << 8) | mz, packed);
+                this.loadPackedMapsquare(packed, mapsquareX, mapsquareZ);
             }
         }
 
@@ -130,6 +164,68 @@ export default class GameMap {
 
     getTotalObjs(): number {
         return this.zonemap.objCount();
+    }
+
+    isInstanced(x: number, z: number): boolean {
+        return this.instances.has((CoordGrid.mapsquare(x) << 8) | CoordGrid.mapsquare(z));
+    }
+
+    getInstanceAt(x: number, z: number): InstancedMap | undefined {
+        return this.instances.get((CoordGrid.mapsquare(x) << 8) | CoordGrid.mapsquare(z));
+    }
+
+    /**
+     * CANDIDATE `map_build`: copy packed source mapsquare 8×8s (collision, locs,
+     * static NPCs/objs) onto an unused high dest. Returns dest coord with the
+     * same local offsets as `src`. Does not mutate packed source files.
+     */
+    buildInstance(src: CoordGrid): number {
+        const srcMx: number = CoordGrid.mapsquare(src.x);
+        const srcMz: number = CoordGrid.mapsquare(src.z);
+        const packed: PackedMapsquare | undefined = this.packed.get((srcMx << 8) | srcMz);
+        if (!packed) {
+            throw new Error(`map_build: no packed mapsquare m${srcMx}_${srcMz}`);
+        }
+
+        const dest = this.allocDestMapsquare();
+        this.loadPackedMapsquare(packed, dest.mx << 6, dest.mz << 6);
+        this.instances.set((dest.mx << 8) | dest.mz, { srcMx, srcMz, destMx: dest.mx, destMz: dest.mz });
+
+        const destX: number = (dest.mx << 6) | (src.x & 0x3f);
+        const destZ: number = (dest.mz << 6) | (src.z & 0x3f);
+        return CoordGrid.packCoord(src.level, destX, destZ);
+    }
+
+    private allocDestMapsquare(): { mx: number; mz: number } {
+        const startMx: number = this.nextDestMx;
+        const startMz: number = this.nextDestMz;
+        while (true) {
+            const mx: number = this.nextDestMx;
+            const mz: number = this.nextDestMz;
+            this.nextDestMz += GameMap.INSTANCE_STRIDE;
+            if (this.nextDestMz > GameMap.INSTANCE_MZ_MAX) {
+                this.nextDestMz = 0;
+                this.nextDestMx += GameMap.INSTANCE_STRIDE;
+                if (this.nextDestMx > GameMap.INSTANCE_MX_MAX) {
+                    this.nextDestMx = GameMap.INSTANCE_MX_MIN;
+                }
+            }
+            const key: number = (mx << 8) | mz;
+            if (!this.packed.has(key) && !this.instances.has(key)) {
+                return { mx, mz };
+            }
+            if (this.nextDestMx === startMx && this.nextDestMz === startMz) {
+                throw new Error('map_build: no unused dest mapsquare');
+            }
+        }
+    }
+
+    private loadPackedMapsquare(packed: PackedMapsquare, mapsquareX: number, mapsquareZ: number): void {
+        this.loadNpcs(new Packet(packed.n), mapsquareX, mapsquareZ);
+        this.loadObjs(new Packet(packed.o), mapsquareX, mapsquareZ);
+        const lands: Int8Array = new Int8Array(GameMap.MAPSQUARE);
+        this.loadGround(lands, new Packet(packed.m), mapsquareX, mapsquareZ);
+        this.loadLocations(lands, new Packet(packed.l), mapsquareX, mapsquareZ);
     }
 
     private loadNpcs(packet: Packet, mapsquareX: number, mapsquareZ: number): void {

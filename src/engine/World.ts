@@ -999,7 +999,7 @@ class World {
         // TODO: benchmark this?
         for (const player of this.playerLoop.all()) {
             // facing (reorientEntity/reorient) runs in the player's turn (processPlayers), not here.
-            player.buildArea.rebuildNormal(); // set origin before compute player is why this is above.
+            player.buildArea.rebuild(); // set origin before compute player is why this is above.
 
             const appearance = player.masks & PlayerInfoProt.APPEARANCE ? player.generateAppearance() : (player.appearanceBuf ?? player.generateAppearance());
 
