@@ -3,6 +3,7 @@ import Player from '#/engine/entity/Player.js';
 import World from '#/engine/World.js';
 import ZoneMap from '#/engine/zone/ZoneMap.js';
 import RebuildNormal from '#/network/game/server/model/RebuildNormal.js';
+import RebuildRegion, { packRebuildRegionKey } from '#/network/game/server/model/RebuildRegion.js';
 
 export default class BuildArea {
     // constructor
@@ -10,7 +11,7 @@ export default class BuildArea {
     readonly loadedZones: Set<number>;
     readonly activeZones: Set<number>;
     readonly mapsquares: Set<number>;
-    
+
     lastBuild: number = -1;
 
     constructor(player: Player) {
@@ -54,6 +55,14 @@ export default class BuildArea {
         }
     }
 
+    rebuild(reconnect: boolean = false): void {
+        if (World.gameMap.isInstanced(this.player.x, this.player.z)) {
+            this.rebuildRegion(reconnect);
+        } else {
+            this.rebuildNormal(reconnect);
+        }
+    }
+
     rebuildNormal(reconnect: boolean = false): void {
         const originX: number = CoordGrid.zone(this.player.originX);
         const originZ: number = CoordGrid.zone(this.player.originZ);
@@ -89,6 +98,50 @@ export default class BuildArea {
             this.player.originZ = this.player.z;
             this.loadedZones.clear();
             this.lastBuild = World.currentTick; // DO NOT DELETE THIS NO MATTER WHAT ??
+        }
+    }
+
+    rebuildRegion(reconnect: boolean = false): void {
+        const originX: number = CoordGrid.zone(this.player.originX);
+        const originZ: number = CoordGrid.zone(this.player.originZ);
+
+        const reloadLeftX = (originX - 4) << 3;
+        const reloadRightX = (originX + 5) << 3;
+        const reloadTopZ = (originZ + 5) << 3;
+        const reloadBottomZ = (originZ - 4) << 3;
+
+        if (this.player.x < reloadLeftX || this.player.z < reloadBottomZ || this.player.x > reloadRightX - 1 || this.player.z > reloadTopZ - 1 || reconnect) {
+            const zoneX: number = CoordGrid.zone(this.player.x);
+            const zoneZ: number = CoordGrid.zone(this.player.z);
+
+            this.mapsquares.clear();
+            const keys: number[][][] = new Array(4);
+            for (let level: number = 0; level < 4; level++) {
+                keys[level] = new Array(13);
+                for (let y: number = 0; y < 13; y++) {
+                    keys[level][y] = new Array(13);
+                    for (let x: number = 0; x < 13; x++) {
+                        const destZoneX: number = zoneX - 6 + x;
+                        const destZoneZ: number = zoneZ - 6 + y;
+                        const inst = World.gameMap.getInstanceAt(destZoneX << 3, destZoneZ << 3);
+                        if (!inst) {
+                            keys[level][y][x] = -1;
+                            continue;
+                        }
+                        const srcTileX: number = (inst.srcMx << 6) | ((destZoneX & 0x7) << 3);
+                        const srcTileZ: number = (inst.srcMz << 6) | ((destZoneZ & 0x7) << 3);
+                        keys[level][y][x] = packRebuildRegionKey(level, srcTileX, srcTileZ, 0);
+                        this.mapsquares.add((inst.srcMx << 8) | inst.srcMz);
+                    }
+                }
+            }
+
+            this.player.write(new RebuildRegion(zoneX, zoneZ, keys));
+
+            this.player.originX = this.player.x;
+            this.player.originZ = this.player.z;
+            this.loadedZones.clear();
+            this.lastBuild = World.currentTick;
         }
     }
 }

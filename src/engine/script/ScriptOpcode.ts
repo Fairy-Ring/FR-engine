@@ -63,6 +63,8 @@ export const enum ScriptOpcode {
     WORLD_DELAY, // official
     MIDI_LENGTH,
     MAP_LOC, // appended (LC 289)
+    MAP_BUILD, // CANDIDATE 2005 region command
+    IN_INSTANCE, // CANDIDATE 2005 region command
 
     // Player ops (2000-2499)
     AFK_EVENT = 2000,
@@ -529,6 +531,8 @@ export const ScriptOpcodeMap: Map<string, number> = new Map([
     ['WORLD_DELAY', ScriptOpcode.WORLD_DELAY],
     ['MIDI_LENGTH', ScriptOpcode.MIDI_LENGTH],
     ['MAP_LOC', ScriptOpcode.MAP_LOC],
+    ['MAP_BUILD', ScriptOpcode.MAP_BUILD],
+    ['IN_INSTANCE', ScriptOpcode.IN_INSTANCE],
 
     ['AFK_EVENT', ScriptOpcode.AFK_EVENT],
     ['ALLOWDESIGN', ScriptOpcode.ALLOWDESIGN],

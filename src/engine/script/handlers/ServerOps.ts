@@ -269,6 +269,18 @@ const ServerOps: CommandHandlers = {
         state.pushInt(0);
     },
 
+    // CANDIDATE 2005 region command. Swap names if a 2007-base / Ash command list appears.
+    [ScriptOpcode.MAP_BUILD]: state => {
+        const src: CoordGrid = check(state.popInt(), CoordValid);
+        state.pushInt(World.gameMap.buildInstance(src));
+    },
+
+    // CANDIDATE 2005 region command. Swap names if a 2007-base / Ash command list appears.
+    [ScriptOpcode.IN_INSTANCE]: state => {
+        const player = state.activePlayer;
+        state.pushInt(World.gameMap.isInstanced(player.x, player.z) ? 1 : 0);
+    },
+
     // Picks a random walkable tile in the square ring [minRadius, maxRadius] (Chebyshev distance)
     // around `coord`. `type` controls reachability: NONE = any open tile, LINEOFWALK / LINEOFSIGHT =
     // the tile must also have a clear walk/sight path back to the origin. Returns the input coord

@@ -13,6 +13,12 @@ const ScriptOpcodePointers: {
         conditional?: boolean;
     };
 } = {
+    // Server ops
+    [ScriptOpcode.IN_INSTANCE]: {
+        require: ['active_player'],
+        require2: ['active_player2']
+    },
+
     // Player ops
     [ScriptOpcode.ALLOWDESIGN]: {
         require: ['active_player']

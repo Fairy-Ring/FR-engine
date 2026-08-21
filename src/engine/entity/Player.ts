@@ -500,7 +500,7 @@ export default class Player extends PathingEntity {
         // - reset anims
         // - social
 
-        this.buildArea.rebuildNormal();
+        this.buildArea.rebuild();
         this.write(new ChatFilterSettings(this.publicChat, this.privateChat, this.tradeDuel));
 
         // todo: exact order
@@ -554,7 +554,7 @@ export default class Player extends PathingEntity {
         // reload entity info (overkill? does the client have some logic around this?)
         this.buildArea.clear(true);
         // rebuild scene later this tick (note: rebuild won't run on the client if you're in the same zone!)
-        this.buildArea.rebuildNormal(true);
+        this.buildArea.rebuild(true);
         // in case of pending update
         if (World.isPendingShutdown) {
             const ticksBeforeShutdown = World.shutdownTicksRemaining;
