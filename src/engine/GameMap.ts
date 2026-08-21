@@ -51,9 +51,11 @@ export default class GameMap {
 
     private static readonly MAPSQUARE: number = GameMap.X * GameMap.Y * GameMap.Z;
 
-    // dest mx 200–255 stays above packed 0–99; p2 player coords still fit.
+    // dest mx AND mz 200–255: mz 0 + local 44 → world z 44, client
+    // mapBuildBaseZ = (zoneZ-6)*8 is negative (T1 / south-of-world).
     // stride 2 keeps 13×13 rebuild windows from overlapping a neighbour dest.
-    private static readonly INSTANCE_MX_MIN: number = 200;
+    static readonly INSTANCE_MX_MIN: number = 200;
+    static readonly INSTANCE_MZ_MIN: number = 200;
     private static readonly INSTANCE_MX_MAX: number = 255;
     private static readonly INSTANCE_MZ_MAX: number = 255;
     private static readonly INSTANCE_STRIDE: number = 2;
@@ -75,7 +77,7 @@ export default class GameMap {
         this.packed = new Map();
         this.instances = new Map();
         this.nextDestMx = GameMap.INSTANCE_MX_MIN;
-        this.nextDestMz = 0;
+        this.nextDestMz = GameMap.INSTANCE_MZ_MIN;
     }
 
     init(): void {
@@ -204,7 +206,7 @@ export default class GameMap {
             const mz: number = this.nextDestMz;
             this.nextDestMz += GameMap.INSTANCE_STRIDE;
             if (this.nextDestMz > GameMap.INSTANCE_MZ_MAX) {
-                this.nextDestMz = 0;
+                this.nextDestMz = GameMap.INSTANCE_MZ_MIN;
                 this.nextDestMx += GameMap.INSTANCE_STRIDE;
                 if (this.nextDestMx > GameMap.INSTANCE_MX_MAX) {
                     this.nextDestMx = GameMap.INSTANCE_MX_MIN;
