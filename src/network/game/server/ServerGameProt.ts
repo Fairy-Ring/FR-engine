@@ -70,7 +70,9 @@ export default class ServerGameProt {
 
     // maps
     static readonly REBUILD_NORMAL = new ServerGameProt(222, 4);
-    static readonly REBUILD_REGION = new ServerGameProt(53, -1);
+    // Client-Java 377 Protocol.SERVERPROT_LENGTH[53] = -2 (g2). A 4×13×13
+    // present-key payload is hundreds of bytes; g1 size truncated and T1'd the client.
+    static readonly REBUILD_REGION = new ServerGameProt(53, -2);
 
     // vars
     static readonly VARP_SMALL = new ServerGameProt(182, 3);
