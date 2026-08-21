@@ -63,8 +63,14 @@ export const enum ScriptOpcode {
     WORLD_DELAY, // official
     MIDI_LENGTH,
     MAP_LOC, // appended (LC 289)
-    MAP_BUILD, // CANDIDATE 2005 region command
-    IN_INSTANCE, // CANDIDATE 2005 region command
+    // LC Engine-TS#95 region commands. Do NOT pin REGION_CREATE=1022 — that int is MIDI_LENGTH here.
+    REGION_CREATE,
+    REGION_SET,
+    REGION_GETCOORD,
+    REGION_FINDBYCOORD,
+    REGION_UID,
+    REGION_FINDBYUID,
+    REGION_SETEXITCOORD,
 
     // Player ops (2000-2499)
     AFK_EVENT = 2000,
@@ -531,8 +537,13 @@ export const ScriptOpcodeMap: Map<string, number> = new Map([
     ['WORLD_DELAY', ScriptOpcode.WORLD_DELAY],
     ['MIDI_LENGTH', ScriptOpcode.MIDI_LENGTH],
     ['MAP_LOC', ScriptOpcode.MAP_LOC],
-    ['MAP_BUILD', ScriptOpcode.MAP_BUILD],
-    ['IN_INSTANCE', ScriptOpcode.IN_INSTANCE],
+    ['REGION_CREATE', ScriptOpcode.REGION_CREATE],
+    ['REGION_SET', ScriptOpcode.REGION_SET],
+    ['REGION_GETCOORD', ScriptOpcode.REGION_GETCOORD],
+    ['REGION_FINDBYCOORD', ScriptOpcode.REGION_FINDBYCOORD],
+    ['REGION_UID', ScriptOpcode.REGION_UID],
+    ['REGION_FINDBYUID', ScriptOpcode.REGION_FINDBYUID],
+    ['REGION_SETEXITCOORD', ScriptOpcode.REGION_SETEXITCOORD],
 
     ['AFK_EVENT', ScriptOpcode.AFK_EVENT],
     ['ALLOWDESIGN', ScriptOpcode.ALLOWDESIGN],

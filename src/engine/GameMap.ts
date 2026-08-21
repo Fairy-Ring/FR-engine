@@ -29,14 +29,6 @@ type PackedMapsquare = {
     o: Uint8Array;
 };
 
-/** Runtime dest of a `map_build` copy. Packed source files are not mutated. */
-export type InstancedMap = {
-    srcMx: number;
-    srcMz: number;
-    destMx: number;
-    destMz: number;
-};
-
 export default class GameMap {
     private static readonly OPEN: number = 0x0;
     private static readonly BLOCK_MAP_SQUARE: number = 0x1;
@@ -51,23 +43,11 @@ export default class GameMap {
 
     private static readonly MAPSQUARE: number = GameMap.X * GameMap.Y * GameMap.Z;
 
-    // dest mx AND mz 200–255: mz 0 + local 44 → world z 44, client
-    // mapBuildBaseZ = (zoneZ-6)*8 is negative (T1 / south-of-world).
-    // stride 2 keeps 13×13 rebuild windows from overlapping a neighbour dest.
-    static readonly INSTANCE_MX_MIN: number = 200;
-    static readonly INSTANCE_MZ_MIN: number = 200;
-    private static readonly INSTANCE_MX_MAX: number = 255;
-    private static readonly INSTANCE_MZ_MAX: number = 255;
-    private static readonly INSTANCE_STRIDE: number = 2;
-
     private readonly members: boolean;
     private readonly zonemap: ZoneMap;
     private readonly multimap: Set<number>;
     private readonly freemap: Set<number>;
     private readonly packed: Map<number, PackedMapsquare>;
-    private readonly instances: Map<number, InstancedMap>;
-    private nextDestMx: number;
-    private nextDestMz: number;
 
     constructor(members: boolean) {
         this.members = members;
@@ -75,9 +55,6 @@ export default class GameMap {
         this.multimap = new Set();
         this.freemap = new Set();
         this.packed = new Map();
-        this.instances = new Map();
-        this.nextDestMx = GameMap.INSTANCE_MX_MIN;
-        this.nextDestMz = GameMap.INSTANCE_MZ_MIN;
     }
 
     init(): void {
@@ -85,6 +62,7 @@ export default class GameMap {
             return;
         }
 
+        this.zonemap.beginInitialization();
         printDebug('Loading game map');
 
         if (fs.existsSync(`${Environment.BUILD_SRC_DIR}/maps/multiway.csv`)) {
@@ -133,6 +111,7 @@ export default class GameMap {
         }
 
         printDebug(`${World.getTotalNpcs()}/16383 static NPCs added`);
+        this.zonemap.endInitialization();
     }
 
     isMulti(coord: number): boolean {
@@ -145,11 +124,51 @@ export default class GameMap {
     }
 
     getZone(x: number, z: number, level: number): Zone {
-        return this.zonemap.zone(x, z, level);
+        return this.zonemap.getZone(x, z, level);
     }
 
     getZoneIndex(zoneIndex: number): Zone {
-        return this.zonemap.zoneByIndex(zoneIndex);
+        return this.zonemap.getZoneByIndex(zoneIndex);
+    }
+
+    getZoneIfExists(x: number, z: number, level: number): Zone | null {
+        return this.zonemap.getZoneIfExists(x, z, level);
+    }
+
+    getZoneIndexIfExists(zoneIndex: number): Zone | null {
+        return this.zonemap.getZoneByIndexIfExists(zoneIndex);
+    }
+
+    createInstanceZone(zoneIndex: number): Zone {
+        return this.zonemap.createInstanceZone(zoneIndex);
+    }
+
+    hasZone(x: number, z: number, level: number): boolean {
+        return this.zonemap.hasZone(x, z, level);
+    }
+
+    isInitializing(): boolean {
+        return this.zonemap.isInitializingMap();
+    }
+
+    addZone(zone: Zone): Zone {
+        return this.zonemap.addZone(zone);
+    }
+
+    removeZone(index: number): boolean {
+        return this.zonemap.removeZone(index);
+    }
+
+    isMultiZone(zoneIndex: number): boolean {
+        return this.multimap.has(zoneIndex);
+    }
+
+    setMultiZone(zoneIndex: number, multi: boolean): void {
+        if (multi) {
+            this.multimap.add(zoneIndex);
+        } else {
+            this.multimap.delete(zoneIndex);
+        }
     }
 
     getZoneGrid(level: number): ZoneGrid {
@@ -166,60 +185,6 @@ export default class GameMap {
 
     getTotalObjs(): number {
         return this.zonemap.objCount();
-    }
-
-    isInstanced(x: number, z: number): boolean {
-        return this.instances.has((CoordGrid.mapsquare(x) << 8) | CoordGrid.mapsquare(z));
-    }
-
-    getInstanceAt(x: number, z: number): InstancedMap | undefined {
-        return this.instances.get((CoordGrid.mapsquare(x) << 8) | CoordGrid.mapsquare(z));
-    }
-
-    /**
-     * CANDIDATE `map_build`: copy packed source mapsquare 8×8s (collision, locs,
-     * static NPCs/objs) onto an unused high dest. Returns dest coord with the
-     * same local offsets as `src`. Does not mutate packed source files.
-     */
-    buildInstance(src: CoordGrid): number {
-        const srcMx: number = CoordGrid.mapsquare(src.x);
-        const srcMz: number = CoordGrid.mapsquare(src.z);
-        const packed: PackedMapsquare | undefined = this.packed.get((srcMx << 8) | srcMz);
-        if (!packed) {
-            throw new Error(`map_build: no packed mapsquare m${srcMx}_${srcMz}`);
-        }
-
-        const dest = this.allocDestMapsquare();
-        this.loadPackedMapsquare(packed, dest.mx << 6, dest.mz << 6);
-        this.instances.set((dest.mx << 8) | dest.mz, { srcMx, srcMz, destMx: dest.mx, destMz: dest.mz });
-
-        const destX: number = (dest.mx << 6) | (src.x & 0x3f);
-        const destZ: number = (dest.mz << 6) | (src.z & 0x3f);
-        return CoordGrid.packCoord(src.level, destX, destZ);
-    }
-
-    private allocDestMapsquare(): { mx: number; mz: number } {
-        const startMx: number = this.nextDestMx;
-        const startMz: number = this.nextDestMz;
-        while (true) {
-            const mx: number = this.nextDestMx;
-            const mz: number = this.nextDestMz;
-            this.nextDestMz += GameMap.INSTANCE_STRIDE;
-            if (this.nextDestMz > GameMap.INSTANCE_MZ_MAX) {
-                this.nextDestMz = GameMap.INSTANCE_MZ_MIN;
-                this.nextDestMx += GameMap.INSTANCE_STRIDE;
-                if (this.nextDestMx > GameMap.INSTANCE_MX_MAX) {
-                    this.nextDestMx = GameMap.INSTANCE_MX_MIN;
-                }
-            }
-            const key: number = (mx << 8) | mz;
-            if (!this.packed.has(key) && !this.instances.has(key)) {
-                return { mx, mz };
-            }
-            if (this.nextDestMx === startMx && this.nextDestMz === startMz) {
-                throw new Error('map_build: no unused dest mapsquare');
-            }
-        }
     }
 
     private loadPackedMapsquare(packed: PackedMapsquare, mapsquareX: number, mapsquareZ: number): void {

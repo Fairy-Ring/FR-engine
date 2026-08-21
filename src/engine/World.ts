@@ -53,6 +53,7 @@ import { PlayerStat } from '#/engine/entity/PlayerStat.js';
 import { SessionLog } from '#/engine/entity/tracking/SessionLog.js';
 import { WealthTransactionEvent, WealthEvent } from '#/engine/entity/tracking/WealthEvent.js';
 import GameMap, { changeLocCollision, changeNpcCollision, changeBlockCollision, changePlayerOccCollision } from '#/engine/GameMap.js';
+import InstanceController from '#/engine/InstanceController.js';
 import { Inventory } from '#/engine/Inventory.js';
 import ScriptPointer from '#/engine/script/ScriptPointer.js';
 import ScriptProvider from '#/engine/script/ScriptProvider.js';
@@ -133,6 +134,9 @@ class World {
 
     // the game/zones map
     readonly gameMap: GameMap = new GameMap(Environment.NODE_MEMBERS);
+
+    // LC Engine-TS#95 instance allocator
+    readonly instances: InstanceController = new InstanceController();
 
     // shared inventories (shops)
     readonly invs: Set<Inventory> = new Set();

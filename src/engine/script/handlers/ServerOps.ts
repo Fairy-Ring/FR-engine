@@ -10,7 +10,6 @@ import ScriptState from '#/engine/script/ScriptState.js';
 import { check, CoordValid, LocTypeValid, NumberPositive, SeqTypeValid, SpotAnimTypeValid, FindSquareValid } from '#/engine/script/ScriptValidators.js';
 import World from '#/engine/World.js';
 import Environment from '#/util/Environment.js';
-import Midi from '#/cache/midi/Midi.js';
 
 const ServerOps: CommandHandlers = {
     [ScriptOpcode.MAP_CLOCK]: state => {
@@ -34,7 +33,9 @@ const ServerOps: CommandHandlers = {
         let count = 0;
         for (let x = Math.floor(from.x / 8); x <= Math.ceil(to.x / 8); x++) {
             for (let z = Math.floor(from.z / 8); z <= Math.ceil(to.z / 8); z++) {
-                for (const player of World.gameMap.getZone(x << 3, z << 3, from.level).getAllPlayersSafe()) {
+                const zone = World.gameMap.getZoneIfExists(x << 3, z << 3, from.level);
+                if (!zone) continue;
+                for (const player of zone.getAllPlayersSafe()) {
                     if (player.x >= from.x && player.x <= to.x && player.z >= from.z && player.z <= to.z) {
                         count++;
                     }
@@ -212,30 +213,45 @@ const ServerOps: CommandHandlers = {
 
     [ScriptOpcode.MAP_LOCADDUNSAFE]: state => {
         const coord: CoordGrid = check(state.popInt(), CoordValid);
-        // check south and west neighboring zones for big locs that bleed over...
-        // Maybe theres a smarter way to do this?
-        for (let x = -8; x <= 0; x += 8) {
-            for (let z = -8; z <= 0; z += 8) {
-                for (const loc of World.gameMap.getZone(coord.x + x, coord.z + z, coord.level).getAllLocsUnsafe()) {
-                    const type = check(loc.type, LocTypeValid);
 
-                    if (type.active !== 1) {
-                        continue;
-                    }
+        const zone = World.gameMap.getZoneIfExists(coord.x, coord.z, coord.level);
+        if (!zone) {
+            return;
+        }
 
-                    if (!loc.isActive && loc.layer === LocLayer.WALL) {
-                        continue;
+        for (const loc of zone.getAllLocsUnsafe()) {
+            const type = check(loc.type, LocTypeValid);
+
+            if (type.active !== 1) {
+                continue;
+            }
+
+            const layer = loc.layer;
+
+            if (!loc.isActive && layer === LocLayer.WALL) {
+                continue;
+            }
+
+            if (layer === LocLayer.WALL) {
+                if (loc.x === coord.x && loc.z === coord.z) {
+                    state.pushInt(1);
+                    return;
+                }
+            } else if (layer === LocLayer.GROUND) {
+                const width = loc.angle === LocAngle.NORTH || loc.angle === LocAngle.SOUTH ? loc.length : loc.width;
+                const length = loc.angle === LocAngle.NORTH || loc.angle === LocAngle.SOUTH ? loc.width : loc.length;
+                for (let index = 0; index < width * length; index++) {
+                    const deltaX = loc.x + (index % width);
+                    const deltaZ = loc.z + ((index / width) | 0);
+                    if (deltaX === coord.x && deltaZ === coord.z) {
+                        state.pushInt(1);
+                        return;
                     }
-                    const width = loc.angle === LocAngle.NORTH || loc.angle === LocAngle.SOUTH ? loc.length : loc.width;
-                    const length = loc.angle === LocAngle.NORTH || loc.angle === LocAngle.SOUTH ? loc.width : loc.length;
-                    for (let index = 0; index < width * length; index++) {
-                        const deltaX = loc.x + (index % width);
-                        const deltaZ = loc.z + ((index / width) | 0);
-                        if (deltaX === coord.x && deltaZ === coord.z) {
-                            state.pushInt(1);
-                            return;
-                        }
-                    }
+                }
+            } else if (layer === LocLayer.GROUND_DECOR) {
+                if (loc.x === coord.x && loc.z === coord.z) {
+                    state.pushInt(1);
+                    return;
                 }
             }
         }
@@ -244,118 +260,156 @@ const ServerOps: CommandHandlers = {
 
     [ScriptOpcode.MAP_LOC]: state => {
         const coord: CoordGrid = check(state.popInt(), CoordValid);
-        for (let x = -8; x <= 0; x += 8) {
-            for (let z = -8; z <= 0; z += 8) {
-                for (const loc of World.gameMap.getZone(coord.x + x, coord.z + z, coord.level).getAllLocsSafe()) {
-                    const type = check(loc.type, LocTypeValid);
-
-                    if (type.active !== 1) {
-                        continue;
-                    }
-
-                    const width = loc.angle === LocAngle.NORTH || loc.angle === LocAngle.SOUTH ? loc.length : loc.width;
-                    const length = loc.angle === LocAngle.NORTH || loc.angle === LocAngle.SOUTH ? loc.width : loc.length;
-                    for (let index = 0; index < width * length; index++) {
-                        const deltaX = loc.x + (index % width);
-                        const deltaZ = loc.z + ((index / width) | 0);
-                        if (deltaX === coord.x && deltaZ === coord.z) {
-                            state.pushInt(1);
-                            return;
-                        }
-                    }
+        const zone = World.gameMap.getZoneIfExists(coord.x, coord.z, coord.level);
+        if (!zone) {
+            state.pushInt(0);
+            return;
+        }
+        for (const loc of zone.getAllLocsSafe()) {
+            const type = check(loc.type, LocTypeValid);
+            if (type.active !== 1) {
+                continue;
+            }
+            const width = loc.angle === LocAngle.NORTH || loc.angle === LocAngle.SOUTH ? loc.length : loc.width;
+            const length = loc.angle === LocAngle.NORTH || loc.angle === LocAngle.SOUTH ? loc.width : loc.length;
+            for (let index = 0; index < width * length; index++) {
+                const deltaX = loc.x + (index % width);
+                const deltaZ = loc.z + ((index / width) | 0);
+                if (deltaX === coord.x && deltaZ === coord.z) {
+                    state.pushInt(1);
+                    return;
                 }
             }
         }
         state.pushInt(0);
     },
 
-    // CANDIDATE 2005 region command. Swap names if a 2007-base / Ash command list appears.
-    [ScriptOpcode.MAP_BUILD]: state => {
-        const src: CoordGrid = check(state.popInt(), CoordValid);
-        state.pushInt(World.gameMap.buildInstance(src));
-    },
-
-    // CANDIDATE 2005 region command. Swap names if a 2007-base / Ash command list appears.
-    [ScriptOpcode.IN_INSTANCE]: state => {
-        const player = state.activePlayer;
-        state.pushInt(World.gameMap.isInstanced(player.x, player.z) ? 1 : 0);
-    },
-
-    // Picks a random walkable tile in the square ring [minRadius, maxRadius] (Chebyshev distance)
-    // around `coord`. `type` controls reachability: NONE = any open tile, LINEOFWALK / LINEOFSIGHT =
-    // the tile must also have a clear walk/sight path back to the origin. Returns the input coord
-    // unchanged when no tile qualifies (caller treats "result === coord" as "no square found").
     [ScriptOpcode.MAP_FINDSQUARE]: state => {
         const [coord, minRadius, maxRadius, type] = state.popInts(4);
         check(minRadius, NumberPositive);
         check(maxRadius, NumberPositive);
         check(type, FindSquareValid);
         const origin: CoordGrid = check(coord, CoordValid);
-        // On F2P nodes, members-only tiles are rejected as candidates further down.
         const freeWorld = !Environment.NODE_MEMBERS;
-
-        // The reachability gate for a candidate tile back to the origin. Checked last in the loop
-        // because line-of-walk/sight tracing is far more expensive than the other filters, so we
-        // only pay for it on tiles that already passed the cheap checks.
-        const passesType = (x: number, z: number): boolean => {
-            if (type === MapFindSquareType.LINEOFWALK) {
-                return isLineOfWalk(origin.level, x, z, origin.x, origin.z);
+        if (maxRadius < 10) {
+            if (type === MapFindSquareType.NONE) {
+                for (let i = 0; i < 50; i++) {
+                    const distX = Math.floor(Math.random() * (2 * maxRadius + 1)) - maxRadius;
+                    const distZ = Math.floor(Math.random() * (2 * maxRadius + 1)) - maxRadius;
+                    const distance = Math.max(Math.abs(distX), Math.abs(distZ));
+                    if (distance < minRadius || distance > maxRadius) {
+                        continue;
+                    }
+                    const randomX = origin.x + distX;
+                    const randomZ = origin.z + distZ;
+                    if (freeWorld && !World.gameMap.isFreeToPlay(randomX, randomZ)) {
+                        continue;
+                    }
+                    if (!isMapBlocked(randomX, randomZ, origin.level)) {
+                        state.pushInt(CoordGrid.packCoord(origin.level, randomX, randomZ));
+                        return;
+                    }
+                }
+            } else if (type === MapFindSquareType.LINEOFWALK) {
+                for (let i = 0; i < 50; i++) {
+                    const distX = Math.floor(Math.random() * (2 * maxRadius + 1)) - maxRadius;
+                    const distZ = Math.floor(Math.random() * (2 * maxRadius + 1)) - maxRadius;
+                    const distance = Math.max(Math.abs(distX), Math.abs(distZ));
+                    if (distance < minRadius || distance > maxRadius) {
+                        continue;
+                    }
+                    const randomX = origin.x + distX;
+                    const randomZ = origin.z + distZ;
+                    if (freeWorld && !World.gameMap.isFreeToPlay(randomX, randomZ)) {
+                        continue;
+                    }
+                    if (isLineOfWalk(origin.level, randomX, randomZ, origin.x, origin.z) && !isMapBlocked(randomX, randomZ, origin.level)) {
+                        state.pushInt(CoordGrid.packCoord(origin.level, randomX, randomZ));
+                        return;
+                    }
+                }
+            } else if (type === MapFindSquareType.LINEOFSIGHT) {
+                for (let i = 0; i < 50; i++) {
+                    const distX = Math.floor(Math.random() * (2 * maxRadius + 1)) - maxRadius;
+                    const distZ = Math.floor(Math.random() * (2 * maxRadius + 1)) - maxRadius;
+                    const distance = Math.max(Math.abs(distX), Math.abs(distZ));
+                    if (distance < minRadius || distance > maxRadius) {
+                        continue;
+                    }
+                    const randomX = origin.x + distX;
+                    const randomZ = origin.z + distZ;
+                    if (freeWorld && !World.gameMap.isFreeToPlay(randomX, randomZ)) {
+                        continue;
+                    }
+                    if (isLineOfSight(origin.level, randomX, randomZ, origin.x, origin.z) && !isMapBlocked(randomX, randomZ, origin.level)) {
+                        state.pushInt(CoordGrid.packCoord(origin.level, randomX, randomZ));
+                        return;
+                    }
+                }
             }
-            if (type === MapFindSquareType.LINEOFSIGHT) {
-                return isLineOfSight(origin.level, x, z, origin.x, origin.z);
-            }
-            return true; // NONE: no reachability requirement
-        };
-
-        const MAX_TILES = 100;
-        const eligible: number[] = [];
-
-        // Loop every tile, break at MAX_TILES
-        outer: for (let x = origin.x - maxRadius; x <= origin.x + maxRadius; x++) {
-            for (let z = origin.z - maxRadius; z <= origin.z + maxRadius; z++) {
-                // Restrict the bounding box to the ring: skip the inner hole and anything past maxRadius.
-                const distance = Math.max(Math.abs(x - origin.x), Math.abs(z - origin.z));
-                if (distance < minRadius || distance > maxRadius) {
-                    continue;
+        } else {
+            // west bias (imps)
+            if (type === MapFindSquareType.NONE) {
+                for (let x = origin.x - maxRadius; x <= origin.x + maxRadius; x++) {
+                    const distX = x - origin.x;
+                    const distZ = Math.floor(Math.random() * (2 * maxRadius + 1)) - maxRadius;
+                    const distance = Math.max(Math.abs(distX), Math.abs(distZ));
+                    if (distance < minRadius || distance > maxRadius) {
+                        continue;
+                    }
+                    const randomZ = origin.z + distZ;
+                    if (freeWorld && !World.gameMap.isFreeToPlay(x, randomZ)) {
+                        continue;
+                    }
+                    if (!isMapBlocked(x, randomZ, origin.level) && !CoordGrid.isWithinDistanceSW({ x: x, z: randomZ }, origin, minRadius)) {
+                        state.pushInt(CoordGrid.packCoord(origin.level, x, randomZ));
+                        return;
+                    }
                 }
-                // F2P node: discard members-only tiles.
-                if (freeWorld && !World.gameMap.isFreeToPlay(x, z)) {
-                    continue;
+            } else if (type === MapFindSquareType.LINEOFWALK) {
+                for (let x = origin.x - maxRadius; x <= origin.x + maxRadius; x++) {
+                    const distX = x - origin.x;
+                    const distZ = Math.floor(Math.random() * (2 * maxRadius + 1)) - maxRadius;
+                    const distance = Math.max(Math.abs(distX), Math.abs(distZ));
+                    if (distance < minRadius || distance > maxRadius) {
+                        continue;
+                    }
+                    const randomZ = origin.z + distZ;
+                    if (freeWorld && !World.gameMap.isFreeToPlay(x, randomZ)) {
+                        continue;
+                    }
+                    if (isLineOfWalk(origin.level, x, randomZ, origin.x, origin.z) && !isMapBlocked(x, randomZ, origin.level) && !CoordGrid.isWithinDistanceSW({ x: x, z: randomZ }, origin, minRadius)) {
+                        state.pushInt(CoordGrid.packCoord(origin.level, x, randomZ));
+                        return;
+                    }
                 }
-                // Must be a standable tile (no collision).
-                if (isMapBlocked(x, z, origin.level)) {
-                    continue;
-                }
-                // Finally the (costly) reachability requirement for this `type`.
-                if (!passesType(x, z)) {
-                    continue;
-                }
-                eligible.push(CoordGrid.packCoord(origin.level, x, z));
-                if (eligible.length >= MAX_TILES) {
-                    break outer;
+            } else if (type === MapFindSquareType.LINEOFSIGHT) {
+                for (let x = origin.x - maxRadius; x <= origin.x + maxRadius; x++) {
+                    const distX = x - origin.x;
+                    const distZ = Math.floor(Math.random() * (2 * maxRadius + 1)) - maxRadius;
+                    const distance = Math.max(Math.abs(distX), Math.abs(distZ));
+                    if (distance < minRadius || distance > maxRadius) {
+                        continue;
+                    }
+                    const randomZ = origin.z + distZ;
+                    if (freeWorld && !World.gameMap.isFreeToPlay(x, randomZ)) {
+                        continue;
+                    }
+                    if (isLineOfSight(origin.level, x, randomZ, origin.x, origin.z) && !isMapBlocked(x, randomZ, origin.level) && !CoordGrid.isWithinDistanceSW({ x: x, z: randomZ }, origin, minRadius)) {
+                        state.pushInt(CoordGrid.packCoord(origin.level, x, randomZ));
+                        return;
+                    }
                 }
             }
         }
 
-        // No qualifying tile: hand back the original coord so the caller can detect the failure.
-        if (eligible.length === 0) {
-            state.pushInt(coord);
-            return;
-        }
-        // Uniform roll among the collected candidates.
-        state.pushInt(eligible[Math.floor(Math.random() * eligible.length)]);
+        state.pushInt(coord);
     },
 
     [ScriptOpcode.MAP_MULTIWAY]: state => {
         const coord = state.popInt();
 
         state.pushInt(World.gameMap.isMulti(coord) ? 1 : 0);
-    },
-
-    [ScriptOpcode.MIDI_LENGTH]: state => {
-        const track = state.popInt();
-
-        state.pushInt(Midi.getTickLength(track));
     }
 };
 
