@@ -1,5 +1,6 @@
 import { LocLayer, LocAngle } from '#/engine/routefinder/index.js';
 
+import Midi from '#/cache/midi/Midi.js';
 import SpotanimType from '#/cache/config/SpotanimType.js';
 import { CoordGrid } from '#/engine/CoordGrid.js';
 import { MapFindSquareType } from '#/engine/entity/MapFindSquareType.js';
@@ -410,6 +411,11 @@ const ServerOps: CommandHandlers = {
         const coord = state.popInt();
 
         state.pushInt(World.gameMap.isMulti(coord) ? 1 : 0);
+    },
+
+    [ScriptOpcode.MIDI_LENGTH]: state => {
+        const track = state.popInt();
+        state.pushInt(Midi.getTickLength(track));
     }
 };
 
