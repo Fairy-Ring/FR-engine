@@ -150,6 +150,12 @@ export default class FontType {
                     }
                     splitIndex = i;
                 } else if (str[i] === '|') {
+                    // Prefer a prior in-width space when the pre-pipe clause already
+                    // exceeds maxWidth; the pipe is consumed on a later pass.
+                    const w = this.stringWidth(str.substring(0, i));
+                    if (w > maxWidth && splitIndex < i) {
+                        break;
+                    }
                     splitIndex = i;
                     break;
                 }
