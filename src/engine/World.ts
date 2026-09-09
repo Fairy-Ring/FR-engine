@@ -92,6 +92,7 @@ import {
     trackSessionEventsPublished
 } from '#/server/Metrics.js';
 import Environment from '#/util/Environment.js';
+import { CoordGrid } from '#/engine/CoordGrid.js';
 import { fromBase37, toBase37, toSafeName } from '#/util/JString.js';
 import LinkList from '#/datastruct/LinkList.js';
 import { printDebug, printError, printInfo } from '#/util/Logger.js';
@@ -944,7 +945,15 @@ class World {
             player.tele = true;
             player.moveClickRequest = false;
 
+            // Never associate an old save's instance tile with a reused footprint.
+            if (CoordGrid.isInstanceX(player.x)) {
+                player.x = 3222;
+                player.z = 3222;
+                player.level = 0;
+                player.previousOverworldCoord = null;
+            }
             this.gameMap.getZone(player.x, player.z, player.level).enter(player);
+            this.instances.playerEntered({ level: player.level, x: player.x, z: player.z });
             player.onLogin();
 
             if (this.shutdownTick != -1) {
@@ -1613,8 +1622,16 @@ class World {
             player.client.close();
         }
 
+        const instanceCoord: CoordGrid = { level: player.level, x: player.x, z: player.z };
+        const instance = this.instances.findInstanceByCoord(instanceCoord);
+        if (instance) {
+            player.saveCoordOverride = this.instances.getSaveCoord(instanceCoord, player.previousOverworldCoord);
+        }
         rsbuf.removePlayer(player.slot);
         this.gameMap.getZone(player.x, player.z, player.level).leave(player);
+        if (instance) {
+            this.instances.playerLeft(instanceCoord);
+        }
         delete this.players[player.slot];
         player.unlink();
         changeNpcCollision(player.width, player.x, player.z, player.level, false);

@@ -53,6 +53,8 @@ export default abstract class PathingEntity extends Entity {
     lastInt: number = -1; // resume_p_countdialog, ai_queue
     lastCrawl: boolean = false;
     lastMovement: number = 0;
+    previousOverworldCoord: CoordGrid | null = null;
+    saveCoordOverride: CoordGrid | null = null;
 
     walktrigger: number = -1;
     walktriggerArg: number = 0; // used for npcs
@@ -184,7 +186,13 @@ export default abstract class PathingEntity extends Entity {
 
         if (CoordGrid.zone(previousX) !== CoordGrid.zone(this.x) || CoordGrid.zone(previousZ) !== CoordGrid.zone(this.z) || previousLevel != this.level) {
             World.gameMap.getZone(previousX, previousZ, previousLevel).leave(this);
+            if (this instanceof Player && World.instances.isLeavingInstance({ level: previousLevel, x: previousX, z: previousZ }, { level: this.level, x: this.x, z: this.z })) {
+                World.instances.playerLeft({ level: previousLevel, x: previousX, z: previousZ });
+            }
             World.gameMap.getZone(this.x, this.z, this.level).enter(this);
+            if (this instanceof Player) {
+                World.instances.playerEntered({ level: this.level, x: this.x, z: this.z });
+            }
         }
     }
 
@@ -300,6 +308,9 @@ export default abstract class PathingEntity extends Entity {
         const previousX: number = this.x;
         const previousZ: number = this.z;
         const previousLevel: number = this.level;
+        if (this instanceof Player && !CoordGrid.isInstanceX(previousX) && CoordGrid.isInstanceX(x)) {
+            this.previousOverworldCoord = { level: previousLevel, x: previousX, z: previousZ };
+        }
         this.x = x;
         this.z = z;
         this.level = level;

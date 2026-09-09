@@ -13,6 +13,7 @@ type InstanceRecord = {
     zonesEast: number;
     zonesNorth: number;
     exitCoord: CoordGrid | null;
+    pendingEntryUntil: number;
 };
 
 export default class InstanceController {
@@ -71,11 +72,48 @@ export default class InstanceController {
             floors,
             zonesEast,
             zonesNorth,
-            exitCoord: null
+            exitCoord: null,
+            // Creation and the first teleport are separate script operations.
+            pendingEntryUntil: Date.now() + 30000
         });
 
         this.incrementSlotPointer();
         return sw;
+    }
+
+    playerEntered(coord: CoordGrid): void {
+        const instance = this.findInstanceByCoord(coord);
+        if (instance) {
+            instance.pendingEntryUntil = 0;
+        }
+    }
+
+    playerLeft(coord: CoordGrid): void {
+        const index = this.instances.findIndex(instance => coord.level >= instance.sw.level && coord.level < instance.sw.level + instance.floors && coord.x >= instance.sw.x && coord.x < instance.sw.x + (instance.zonesEast << 3) && coord.z >= instance.sw.z && coord.z < instance.sw.z + (instance.zonesNorth << 3));
+        if (index === -1) {
+            return;
+        }
+
+        const instance = this.instances[index];
+        if (instance.pendingEntryUntil > Date.now() || !this.isInstanceEmpty(instance)) {
+            return;
+        }
+
+        this.deleteInstance(instance);
+        this.instances.splice(index, 1);
+    }
+
+    getSaveCoord(current: CoordGrid, previousOverworld: CoordGrid | null): CoordGrid {
+        const instance = this.findInstanceByCoord(current);
+        const fallback = previousOverworld && !CoordGrid.isInstanceX(previousOverworld.x) ? previousOverworld : { level: 0, x: 3222, z: 3222 };
+        if (!instance) {
+            // A stale instance tile must never be persisted or treated as a valid login location.
+            return CoordGrid.isInstanceX(current.x) ? fallback : current;
+        }
+        if (instance.exitCoord && !CoordGrid.isInstanceX(instance.exitCoord.x)) {
+            return instance.exitCoord;
+        }
+        return fallback;
     }
 
     /**
@@ -168,6 +206,16 @@ export default class InstanceController {
     }
 
     /**
+     * Return whether movement leaves the private instance containing the old tile.
+     * A move between zones in the same instance is not a leave; a move to another
+     * instance or to the overworld is, so the old instance can be reclaimed now.
+     */
+    isLeavingInstance(previous: CoordGrid, current: CoordGrid): boolean {
+        const previousInstance = this.findInstanceByCoord(previous);
+        return previousInstance !== null && previousInstance !== this.findInstanceByCoord(current);
+    }
+
+    /**
      * Resolve an instance by raw level/x/z tile values.
      * This is the core containment test used by teleport/login/instance checks.
      */
@@ -208,7 +256,7 @@ export default class InstanceController {
         // Walk backward so removals do not disturb the remaining indices.
         for (let index: number = this.instances.length - 1; index >= 0; index--) {
             const instance: InstanceRecord = this.instances[index];
-            if (!this.isInstanceEmpty(instance)) {
+            if (instance.pendingEntryUntil > Date.now() || !this.isInstanceEmpty(instance)) {
                 continue;
             }
 

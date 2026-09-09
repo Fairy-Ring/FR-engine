@@ -192,9 +192,10 @@ export default class Player extends PathingEntity {
         sav.p2(PlayerLoading.SAV_MAGIC); // magic
         sav.p2(PlayerLoading.SAV_VERSION); // version
 
-        sav.p2(this.x);
-        sav.p2(this.z);
-        sav.p1(this.level);
+        const saveCoord = this.saveCoordOverride ?? World.instances.getSaveCoord({ level: this.level, x: this.x, z: this.z }, this.previousOverworldCoord);
+        sav.p2(saveCoord.x);
+        sav.p2(saveCoord.z);
+        sav.p1(saveCoord.level);
         for (let i = 0; i < 7; i++) {
             sav.p1(this.body[i]);
         }
