@@ -61,6 +61,7 @@ export default class BuildArea {
 
     rebuild(reconnect: boolean = false): void {
         this.rebuildNormal(reconnect);
+        this.rebuildZones();
     }
 
     rebuildNormal(reconnect: boolean = false): void {

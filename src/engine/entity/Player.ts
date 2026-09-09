@@ -54,6 +54,7 @@ import MidiJingle from '#/network/game/server/model/MidiJingle.js';
 import MidiSong from '#/network/game/server/model/MidiSong.js';
 import ResetAnims from '#/network/game/server/model/ResetAnims.js';
 import ResetClientVarCache from '#/network/game/server/model/ResetClientVarCache.js';
+import SetMultiway from '#/network/game/server/model/SetMultiway.js';
 import TutOpen from '#/network/game/server/model/TutOpen.js';
 import UnsetMapFlag from '#/network/game/server/model/UnsetMapFlag.js';
 import UpdateInvStopTransmit from '#/network/game/server/model/UpdateInvStopTransmit.js';
@@ -502,6 +503,7 @@ export default class Player extends PathingEntity {
         // - social
 
         this.buildArea.rebuild();
+        this.queueZoneTransitionTriggers(this.x, this.z, this.level, true);
         this.write(new ChatFilterSettings(this.publicChat, this.privateChat, this.tradeDuel));
 
         // todo: exact order
@@ -532,6 +534,45 @@ export default class Player extends PathingEntity {
         this.lastStepX = this.x - 1;
         this.lastStepZ = this.z;
         this.isActive = true;
+    }
+
+    protected override onTileUpdated(previousX: number, previousZ: number, previousLevel: number): void {
+        this.queueZoneTransitionTriggers(previousX, previousZ, previousLevel, false);
+    }
+
+    private queueZoneTransitionTriggers(previousX: number, previousZ: number, previousLevel: number, initialLogin: boolean): void {
+        const currentMapZoneX = (this.x >> 6) << 6;
+        const currentMapZoneZ = (this.z >> 6) << 6;
+        const currentMapZone = CoordGrid.packCoord(0, currentMapZoneX, currentMapZoneZ);
+        const mapZoneChanged = this.lastMapZone !== currentMapZone;
+        if (mapZoneChanged) {
+            if (!initialLogin && this.lastMapZone !== -1) {
+                this.triggerMapzoneExit((previousX >> 6) << 6, (previousZ >> 6) << 6);
+            }
+            this.triggerMapzone(currentMapZoneX, currentMapZoneZ);
+            this.lastMapZone = currentMapZone;
+        }
+
+        const currentZoneX = (this.x >> 3) << 3;
+        const currentZoneZ = (this.z >> 3) << 3;
+        const currentZone = CoordGrid.packCoord(this.level, currentZoneX, currentZoneZ);
+        const zoneChanged = this.lastZone !== currentZone;
+        if (!zoneChanged) {
+            return;
+        }
+
+        if (!initialLogin && this.lastZone !== -1) {
+            const previousZone = CoordGrid.packCoord(previousLevel, (previousX >> 3) << 3, (previousZ >> 3) << 3);
+            const lastWasMulti = World.gameMap.isMulti(previousZone);
+            const nowIsMulti = World.gameMap.isMulti(currentZone);
+            if (lastWasMulti !== nowIsMulti) {
+                this.write(new SetMultiway(nowIsMulti));
+            }
+            this.triggerZoneExit(previousLevel, (previousX >> 3) << 3, (previousZ >> 3) << 3);
+        }
+
+        this.triggerZone(this.level, currentZoneX, currentZoneZ);
+        this.lastZone = currentZone;
     }
 
     onReconnect() {
@@ -2102,6 +2143,11 @@ export default class Player extends PathingEntity {
     }
 
     openChatModal(com: number) {
+        if (this.refreshModalClose) {
+            this.write(new IfClose());
+            this.refreshModalClose = false;
+        }
+
         if ((this.modalState & ModalState.MAIN) !== ModalState.NONE) {
             this.write(new IfClose());
             this.modalState &= ~ModalState.MAIN;

@@ -123,6 +123,8 @@ export default abstract class PathingEntity extends Entity {
     abstract blockWalkFlag(): CollisionFlag;
     abstract defaultMoveSpeed(): MoveSpeed;
 
+    protected onTileUpdated(_previousX: number, _previousZ: number, _previousLevel: number): void {}
+
     /**
      * Process movement function for a PathingEntity to use.
      * Checks for if this PathingEntity has any waypoints to move towards.
@@ -238,6 +240,10 @@ export default abstract class PathingEntity extends Entity {
         // Refresh zone presence if we had a waypoint, even if we didn't move
         this.refreshZonePresence(srcX, srcZ, this.level);
 
+        if (this.x !== srcX || this.z !== srcZ) {
+            this.onTileUpdated(srcX, srcZ, this.level);
+        }
+
         // Update waypoint index if we reached the current waypoint
         if (this.waypointIndex !== -1) {
             const coord: CoordGrid = CoordGrid.unpackCoord(this.waypoints[this.waypointIndex]);
@@ -319,6 +325,7 @@ export default abstract class PathingEntity extends Entity {
         const moveZ: number = CoordGrid.moveZ(this.z, dir);
         this.focus(CoordGrid.fine(moveX, this.width), CoordGrid.fine(moveZ, this.length), false);
         this.refreshZonePresence(previousX, previousZ, previousLevel);
+        this.onTileUpdated(previousX, previousZ, previousLevel);
         this.lastStepX = this.x - 1;
         this.lastStepZ = this.z;
         this.tele = true;
