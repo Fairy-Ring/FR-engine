@@ -117,11 +117,12 @@ export class PlayerInfoEncoder {
     }
 
     private add(renderer: PlayerRenderer, player: Player, other: Player, pid: number, x: number, z: number, jump: boolean): void {
+        // 377 Java getPlayerNewVis: pid11, dx5, extended1, jump1, dz5
         this.buf.pbit(11, pid);
         this.buf.pbit(5, x);
-        this.buf.pbit(5, z);
-        this.buf.pbit(1, jump ? 1 : 0);
         this.buf.pbit(1, 1);
+        this.buf.pbit(1, jump ? 1 : 0);
+        this.buf.pbit(5, z);
         this.lowdefinition(renderer, player, other);
         player.build.players.insert(other.pid);
     }
